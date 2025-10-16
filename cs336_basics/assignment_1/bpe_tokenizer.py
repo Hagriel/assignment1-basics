@@ -22,6 +22,8 @@ from cs336_basics.utils import (
     process_file_chunks_multiprocessing,
     TrainingLogger,
     WordCountsCache,
+    PairCountsCache,
+    MergesCache,
 )
 from cs336_basics.constants import (
     GPT5_PAT_STR,
@@ -54,6 +56,8 @@ class BPETokenizer:
         self.special_tokens: list[str] = special_tokens
         self.logger = TrainingLogger(verbose)
         self.cache = WordCountsCache(logger=self.logger)
+        self.pair_cache = PairCountsCache(logger=self.logger)
+        self.merges_cache = MergesCache(logger=self.logger)
 
         # Build tokenization pattern: special tokens | regular pattern
         if special_tokens:
@@ -194,13 +198,27 @@ class BPETokenizer:
 
         # Save to cache if enabled
         if use_cache:
-            self.cache.save(total_counts, filename, sort_by_frequency=True)
+            self.cache.save(total_counts, filename)
 
         return total_counts
 
     def train(self, input_path: str, vocab_size: int) -> TrainResult:
         """Train BPE tokenizer on input data."""
         self.logger.start_timer("train")
+
+        # Try to load cached merges first (biggest speedup!)
+        cache_key = self.merges_cache.make_key(input_path, vocab_size)
+        cached_merges = self.merges_cache.load(cache_key)
+
+        if cached_merges is not None:
+            # Cache hit - skip all training, just build vocab
+            self.logger.log_step("Building vocabulary from cached merges...", "vocab")
+            self.init_vocab(cached_merges)
+            self.logger.log_complete("Vocabulary built from cache", "vocab")
+            self.logger.log_training_summary("train", "vocab")
+            return TrainResult(vocab=self.vocab, merges=cached_merges)
+
+        # Cache miss - run full training
         self.logger.log_step("Step 1: Getting initial word counts...", "word_counting")
 
         word_counts = self.get_word_counts(input_path)
@@ -214,8 +232,17 @@ class BPETokenizer:
         # Perform merges with incremental pair count updates
         merges: list[tuple[bytes, bytes]] = []
 
-        # Initial pair counting (only done once)
-        pair_counts = self._get_pair_counts(word_counts)
+        # Initial pair counting - try cache first
+        self.logger.start_timer("pair_counting")
+        cached_pair_counts = self.pair_cache.load(input_path)
+
+        if cached_pair_counts is not None:
+            pair_counts = cached_pair_counts
+        else:
+            # Cache miss - compute from word_counts
+            pair_counts = self._get_pair_counts(word_counts)
+            # Save to cache for future runs
+            self.pair_cache.save(pair_counts, input_path)
 
         for merge_iteration in range(num_merges_needed):
             if not pair_counts:
@@ -278,6 +305,9 @@ class BPETokenizer:
         self.logger.log_step("Step 3: Building vocabulary...", "vocab")
         self.init_vocab(merges)
         self.logger.log_complete("Vocabulary built", "vocab")
+
+        # Save merges to cache for future runs
+        self.merges_cache.save(merges, cache_key)
 
         # Log summary
         self.logger.log_training_summary("train", "word_counting", "merges", "vocab")

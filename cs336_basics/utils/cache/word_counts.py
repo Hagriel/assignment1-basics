@@ -44,9 +44,9 @@ class WordCountsCache(JSONCache[Counter[tuple[bytes, ...]]]):
         self._sort_by_frequency = True  # Default behavior for word counts
 
     def _get_default_cache_dir(self) -> Path:
-        """Get the default cache directory (project_root/data)."""
+        """Get the default cache directory (project_root/data/cache)."""
         from cs336_basics.utils import get_project_root
-        return get_project_root() / "data"
+        return get_project_root() / "data" / "cache"
 
     def get_cache_path(self, key: str) -> Path:
         """
@@ -128,7 +128,7 @@ class WordCountsCache(JSONCache[Counter[tuple[bytes, ...]]]):
         self,
         data: Counter[tuple[bytes, ...]],
         key: str,
-        sort_by_frequency: bool = True,
+        sort_by_frequency: bool = False,
         **kwargs: Any
     ) -> Path:
         """
@@ -165,7 +165,7 @@ class WordCountsCache(JSONCache[Counter[tuple[bytes, ...]]]):
         source_filename: str,
         compute_fn: Callable[[], Counter[tuple[bytes, ...]]],
         force_recompute: bool = False,
-        sort_on_save: bool = True,
+        sort_on_save: bool = False,
         on_load: Callable[[Counter[tuple[bytes, ...]]], None] | None = None,
         on_compute: Callable[[Counter[tuple[bytes, ...]]], None] | None = None,
         verbose: bool = False,
