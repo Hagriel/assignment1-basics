@@ -40,9 +40,9 @@ Training Process (Implemented):
 4. Build vocabulary: special tokens + base bytes + merged tokens
 
 Tie-Breaking Strategy:
-- When pair counts are equal, use lexicographic ordering
+- When pair counts are equal, use lexicographic ordering (select minimum)
 - Ensures deterministic, reproducible results
-- Formula: max(pairs, key=lambda x: (x[1], x[0]))
+- Formula: max_count = max(counts); best_pair = min(pairs with max_count)
 
 Encoding Process (TODO):
 1. Pre-tokenize input text using same regex
@@ -60,20 +60,21 @@ Performance:
 """
 
 import regex as re
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from cs336_basics.utils import (
     format_time,
     get_data_path,
     find_chunk_boundaries,
-    process_file_chunks_multiprocessing
+    process_file_chunks_multiprocessing,
+    TrainingLogger,
+    WordCountsCache,
 )
-from cs336_basics.training_logger import TrainingLogger
 from cs336_basics.constants import (
     GPT5_PAT_STR,
     END_OF_TEXT_TOKEN,
     MODEL_DEFAULTS,
-    TINYSTORIES_VALID
+    TINYSTORIES_VALID, TINYSTORIES_TRAIN, OWT_TRAIN
 )
 
 
@@ -100,6 +101,7 @@ class BPETokenizer:
         self.vocab: dict[int, bytes] = {}
         self.special_tokens: list[str] = special_tokens
         self.logger = TrainingLogger(verbose)
+        self.cache = WordCountsCache(logger=self.logger)  # Pass logger to cache
 
         # Build combined pattern: special tokens | regular pattern
         if special_tokens:
@@ -241,18 +243,27 @@ class BPETokenizer:
 
             return word_counts
 
-    def get_word_counts(self, filename: str, num_workers: int | None = None) -> Counter[tuple[bytes, ...]]:
+    def get_word_counts(self, filename: str, num_workers: int | None = None, use_cache: bool = True) -> Counter[tuple[bytes, ...]]:
         """
         Get word frequency counts from a data file using multiprocessing.
 
         Args:
             filename: Name of the data file to process
             num_workers: Number of worker processes (default: CPU count)
+            use_cache: Whether to use cached word counts if available (default: True)
 
         Returns:
             Counter mapping word tuples (tuples of bytes) to their frequencies
         """
         self.logger.start_timer("word_counting")
+
+        # Try cache first if enabled
+        if use_cache:
+            cached_counts = self.cache.load(filename)
+            if cached_counts is not None:
+                return cached_counts
+
+        # Compute word counts from scratch
         data_file_path = get_data_path(filename)
 
         with open(data_file_path, "rb") as f:
@@ -282,6 +293,10 @@ class BPETokenizer:
             }
         )
 
+        # Save to cache if enabled
+        if use_cache:
+            self.cache.save(total_counts, filename, sort_by_frequency=True)
+
         return total_counts
 
     def train(self, input_path: str, vocab_size: int) -> TrainResult:
@@ -306,17 +321,63 @@ class BPETokenizer:
         num_merges_needed = vocab_size - num_special - 256
         self.logger.log_step(f"Step 2: Performing {num_merges_needed:,} BPE merges...", "merges")
 
-        # Perform merges
+        # Perform merges with incremental pair count updates
         merges: list[tuple[bytes, bytes]] = []
 
+        # Initial pair counting (only done once)
+        pair_counts = self._get_pair_counts(word_counts)
+
         for i in range(num_merges_needed):
-            pair_counts = self._get_pair_counts(word_counts)
             if not pair_counts:
                 break
 
             best_pair = max(pair_counts.items(), key=lambda x: (x[1], x[0]))
-            word_counts = self._apply_merge(word_counts, best_pair[0])
+
+            # Track pair count changes using defaultdict for faster updates
+            pair_deltas: defaultdict[tuple[bytes, bytes], int] = defaultdict(int)
+            new_word_counts: Counter[tuple[bytes, ...]] = Counter()
+
+            # Apply merge and track changes
+            for word, count in word_counts.items():
+                # Fast check: skip words that are too short or don't need merging
+                if len(word) < 2:
+                    new_word_counts[word] += count
+                    continue
+
+                # Check if word actually contains the pair to merge
+                has_pair = False
+                for j in range(len(word) - 1):
+                    if word[j] == best_pair[0][0] and word[j + 1] == best_pair[0][1]:
+                        has_pair = True
+                        break
+
+                if has_pair:
+                    # Get old pairs before merge
+                    for j in range(len(word) - 1):
+                        old_pair = (word[j], word[j + 1])
+                        pair_deltas[old_pair] -= count
+
+                    # Apply merge
+                    merged_word = self._merge_pair(word, best_pair[0])
+                    new_word_counts[merged_word] += count
+
+                    # Get new pairs after merge
+                    for j in range(len(merged_word) - 1):
+                        new_pair = (merged_word[j], merged_word[j + 1])
+                        pair_deltas[new_pair] += count
+                else:
+                    new_word_counts[word] += count
+
+            word_counts = new_word_counts
             merges.append(best_pair[0])
+
+            # Update pair_counts incrementally
+            for pair, delta in pair_deltas.items():
+                new_count = pair_counts.get(pair, 0) + delta
+                if new_count > 0:
+                    pair_counts[pair] = new_count
+                elif pair in pair_counts:
+                    del pair_counts[pair]
 
             if (i + 1) % max(1, num_merges_needed // 10) == 0:
                 self.logger.log_progress(i + 1, num_merges_needed, "merges")
@@ -338,8 +399,8 @@ class BPETokenizer:
 # This is currently here for testing the basic functionality
 if __name__ == "__main__":
     bpe = BPETokenizer(GPT5_PAT_STR, MODEL_DEFAULTS.DEFAULT_SPECIAL_TOKENS, verbose=True)
-    train_result = bpe.train(TINYSTORIES_VALID, 1024)
+    train_result = bpe.train(TINYSTORIES_TRAIN, 4096)
     print('vocab size = ', len(train_result.vocab))
     print('merges count = ', len(train_result.merges))
-    print('First 10 merges:', train_result.merges[:10])
+    print('First 30 longest merges:', sorted(train_result.merges, key=lambda x: len(x[0] + x[1]), reverse=True)[:30])
 
