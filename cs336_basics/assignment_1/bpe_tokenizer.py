@@ -41,26 +41,26 @@ class TrainResult:
 class BPETokenizer:
     """BPE (Byte Pair Encoding) Tokenizer for CS336 Assignment 1."""
 
-    def __init__(self, pat_str: str, special_tokens: list[str], verbose: bool = False) -> None:
+    def __init__(self, pattern: str, special_tokens: list[str], verbose: bool = False) -> None:
         """Initialize BPE tokenizer.
 
         Args:
-            pat_str: Regex pattern for pre-tokenization (GPT2_PAT_STR or GPT5_PAT_STR)
+            pattern: Regex pattern for pre-tokenization (GPT2_PAT_STR or GPT5_PAT_STR)
             special_tokens: List of special tokens (e.g., ['<|endoftext|>'])
             verbose: Whether to print progress information
         """
-        self.compiled_pat = re.compile(pat_str)
+        self.pretokenization_pattern = re.compile(pattern)
         self.vocab: dict[int, bytes] = {}
         self.special_tokens: list[str] = special_tokens
         self.logger = TrainingLogger(verbose)
-        self.cache = WordCountsCache(logger=self.logger)  # Pass logger to cache
+        self.cache = WordCountsCache(logger=self.logger)
 
-        # Build combined pattern: special tokens | regular pattern
+        # Build tokenization pattern: special tokens | regular pattern
         if special_tokens:
             special_pattern = '|'.join(re.escape(token) for token in special_tokens)
-            self.combined_pat = re.compile(f'({special_pattern})|{pat_str}')
+            self.tokenization_pattern = re.compile(f'({special_pattern})|{pattern}')
         else:
-            self.combined_pat = self.compiled_pat
+            self.tokenization_pattern = self.pretokenization_pattern
 
     def init_vocab(self, merges: list[tuple[bytes, bytes]] | None = None) -> None:
         """Initialize vocabulary: special tokens + base bytes + merge results.
@@ -70,19 +70,19 @@ class BPETokenizer:
         self.vocab = {}
 
         # First: Special tokens (0, 1, 2, ...)
-        for idx, token in enumerate(self.special_tokens):
-            self.vocab[idx] = token.encode('utf-8')
+        for token_idx, token in enumerate(self.special_tokens):
+            self.vocab[token_idx] = token.encode('utf-8')
 
         num_special = len(self.special_tokens)
 
         # Second: Base bytes (256 individual bytes)
-        for i in range(256):
-            self.vocab[num_special + i] = bytes([i])
+        for byte_value in range(256):
+            self.vocab[num_special + byte_value] = bytes([byte_value])
 
         # Third: Merges (if provided from training)
         if merges:
-            for idx, (piece1, piece2) in enumerate(merges):
-                self.vocab[num_special + 256 + idx] = piece1 + piece2
+            for merge_idx, (left, right) in enumerate(merges):
+                self.vocab[num_special + 256 + merge_idx] = left + right
 
 
     def _get_pair_counts(self, word_counts: Counter[tuple[bytes, ...]]) -> Counter[tuple[bytes, bytes]]:
@@ -91,8 +91,8 @@ class BPETokenizer:
 
         for word, count in word_counts.items():
             # For each word, count all adjacent pairs
-            for i in range(len(word) - 1):
-                pair = (word[i], word[i + 1])
+            for position in range(len(word) - 1):
+                pair = (word[position], word[position + 1])
                 pair_counts[pair] += count
 
         return pair_counts
@@ -102,20 +102,20 @@ class BPETokenizer:
         if len(word) < 2:
             return word
 
-        new_word = []
-        i = 0
+        merged_sequence = []
+        position = 0
 
-        while i < len(word):
+        while position < len(word):
             # If we found the pair and it's not the last byte, merge it
-            if i < len(word) - 1 and (word[i], word[i + 1]) == pair:
+            if position < len(word) - 1 and (word[position], word[position + 1]) == pair:
                 # Merge the two bytes
-                new_word.append(word[i] + word[i + 1])
-                i += 2
+                merged_sequence.append(word[position] + word[position + 1])
+                position += 2
             else:
-                new_word.append(word[i])
-                i += 1
+                merged_sequence.append(word[position])
+                position += 1
 
-        return tuple(new_word)
+        return tuple(merged_sequence)
 
     def _apply_merge(self, word_counts: Counter[tuple[bytes, ...]], pair: tuple[bytes, bytes]) -> Counter[tuple[bytes, ...]]:
         """Apply merge to all words in Counter."""
@@ -131,22 +131,22 @@ class BPETokenizer:
         """Process file chunk and return token counts."""
         with open(file_path, "rb") as f:
             f.seek(start)
-            chunk = f.read(end - start).decode("utf-8")
+            chunk_text = f.read(end - start).decode("utf-8")
 
             word_counts: Counter[tuple[bytes, ...]] = Counter()
 
-            # Use combined pattern to handle special tokens and regular text in one pass
-            for match in self.combined_pat.finditer(chunk):
-                text = match.group()
+            # Use tokenization pattern to handle special tokens and regular text in one pass
+            for match in self.tokenization_pattern.finditer(chunk_text):
+                matched_text = match.group()
 
                 # Check if this is a special token (matched by first capture group)
-                if text in self.special_tokens:
+                if matched_text in self.special_tokens:
                     # Keep special token as a single token (atomic unit)
-                    word = (text.encode("utf-8"),)
+                    word = (matched_text.encode("utf-8"),)
                 else:
                     # Keep regex-matched token as atomic unit, but split into individual bytes for BPE
                     # Each byte becomes a separate element in the tuple for BPE to merge
-                    word = tuple(bytes([b]) for b in text.encode("utf-8"))
+                    word = tuple(bytes([b]) for b in matched_text.encode("utf-8"))
 
                 word_counts[word] += 1
 
@@ -217,11 +217,11 @@ class BPETokenizer:
         # Initial pair counting (only done once)
         pair_counts = self._get_pair_counts(word_counts)
 
-        for i in range(num_merges_needed):
+        for merge_iteration in range(num_merges_needed):
             if not pair_counts:
                 break
 
-            best_pair = max(pair_counts.items(), key=lambda x: (x[1], x[0]))
+            most_frequent_pair = max(pair_counts.items(), key=lambda x: (x[1], x[0]))
 
             # Track pair count changes using defaultdict for faster updates
             pair_deltas: defaultdict[tuple[bytes, bytes], int] = defaultdict(int)
@@ -236,30 +236,30 @@ class BPETokenizer:
 
                 # Check if word actually contains the pair to merge
                 has_pair = False
-                for j in range(len(word) - 1):
-                    if word[j] == best_pair[0][0] and word[j + 1] == best_pair[0][1]:
+                for pos in range(len(word) - 1):
+                    if word[pos] == most_frequent_pair[0][0] and word[pos + 1] == most_frequent_pair[0][1]:
                         has_pair = True
                         break
 
                 if has_pair:
                     # Get old pairs before merge
-                    for j in range(len(word) - 1):
-                        old_pair = (word[j], word[j + 1])
+                    for pos in range(len(word) - 1):
+                        old_pair = (word[pos], word[pos + 1])
                         pair_deltas[old_pair] -= count
 
                     # Apply merge
-                    merged_word = self._merge_pair(word, best_pair[0])
+                    merged_word = self._merge_pair(word, most_frequent_pair[0])
                     new_word_counts[merged_word] += count
 
                     # Get new pairs after merge
-                    for j in range(len(merged_word) - 1):
-                        new_pair = (merged_word[j], merged_word[j + 1])
+                    for pos in range(len(merged_word) - 1):
+                        new_pair = (merged_word[pos], merged_word[pos + 1])
                         pair_deltas[new_pair] += count
                 else:
                     new_word_counts[word] += count
 
             word_counts = new_word_counts
-            merges.append(best_pair[0])
+            merges.append(most_frequent_pair[0])
 
             # Update pair_counts incrementally
             for pair, delta in pair_deltas.items():
@@ -269,8 +269,8 @@ class BPETokenizer:
                 elif pair in pair_counts:
                     del pair_counts[pair]
 
-            if (i + 1) % max(1, num_merges_needed // 10) == 0:
-                self.logger.log_progress(i + 1, num_merges_needed, "merges")
+            if (merge_iteration + 1) % max(1, num_merges_needed // 10) == 0:
+                self.logger.log_progress(merge_iteration + 1, num_merges_needed, "merges")
 
         self.logger.log_complete("BPE merges", "merges")
 

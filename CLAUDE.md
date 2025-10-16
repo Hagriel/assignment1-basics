@@ -170,3 +170,65 @@ self.logger.log_training_summary("train", "word_counting", "merges", "vocab")
 - Tests use snapshot comparisons for numerical accuracy - your implementations must match reference outputs exactly
 - Memory limits are enforced in tokenizer tests (test_encode_memory_usage, test_encode_iterable_memory_usage)
 - Current project version: 1.0.6 (see `pyproject.toml:3`)
+
+## Python 3.13+ Naming Conventions
+
+Follow these naming best practices for all code in this project:
+
+### **Parameters and Arguments**
+- ✅ Use **descriptive, full words**: `pattern` not `pat_str`
+- ✅ Use **domain-specific terms**: `left, right` not `piece1, piece2`
+- ✅ Be **explicit about types**: `pretokenization_pattern` not `compiled_pat`
+
+### **Instance Attributes**
+- ✅ Use **clear intent names**: `self.tokenization_pattern` not `self.combined_pat`
+- ✅ Indicate **purpose explicitly**: `self.pretokenization_pattern` vs `self.tokenization_pattern`
+- ✅ Avoid **abbreviations**: `self.logger` not `self.log`
+
+### **Loop Variables**
+- ❌ **Never use generic `i, j, k`** in complex logic
+- ✅ Use **semantic names**:
+  - `for merge_iteration in range(num_merges):` not `for i in range(num_merges):`
+  - `for position in range(len(word)):` not `for i in range(len(word)):`
+  - `for token_idx, token in enumerate(tokens):` not `for idx, token in enumerate(tokens):`
+  - `for byte_value in range(256):` not `for i in range(256):`
+
+### **Local Variables**
+- ✅ Use **context-specific names**: `chunk_text` not `chunk`
+- ✅ Indicate **what was processed**: `matched_text` not `text`
+- ✅ Describe **transformations**: `merged_sequence` not `new_word`
+- ✅ Use **algorithm-specific terms**: `most_frequent_pair` not `best_pair`
+
+### **Examples from BPE Tokenizer**
+
+**Good naming (after refactoring):**
+```python
+def __init__(self, pattern: str, special_tokens: list[str], verbose: bool = False):
+    self.pretokenization_pattern = re.compile(pattern)
+    self.tokenization_pattern = re.compile(f'({special_pattern})|{pattern}')
+
+for merge_iteration in range(num_merges_needed):
+    most_frequent_pair = max(pair_counts.items(), key=lambda x: (x[1], x[0]))
+    for pos in range(len(word) - 1):
+        if word[pos] == most_frequent_pair[0][0]:
+            ...
+```
+
+**Bad naming (avoid):**
+```python
+def __init__(self, pat_str: str, special_tokens: list[str], verbose: bool = False):
+    self.compiled_pat = re.compile(pat_str)
+    self.combined_pat = re.compile(f'({special_pattern})|{pat_str}')
+
+for i in range(num_merges_needed):
+    best_pair = max(pair_counts.items(), key=lambda x: (x[1], x[0]))
+    for j in range(len(word) - 1):
+        if word[j] == best_pair[0][0]:
+            ...
+```
+
+### **ML/NLP Specific Guidelines**
+- Use established terminology: `vocab`, `merges`, `tokens`, `embeddings`
+- Be explicit about dimensions: `num_heads`, `hidden_dim`, `vocab_size`
+- Clarify intent in transformations: `normalized_weights` not `norm_w`
+- Index variables should indicate what they index: `token_idx`, `batch_idx`, `head_idx`
