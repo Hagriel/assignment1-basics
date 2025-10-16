@@ -1,62 +1,15 @@
-"""
-BPE (Byte Pair Encoding) Tokenizer Implementation for CS336 Assignment 1.
+"""BPE tokenizer with memory-efficient training and deterministic merges.
 
-This module provides a complete BPE training implementation with memory-efficient
-multiprocessing, deterministic tie-breaking, and proper special token handling.
+Implements GPT-2/GPT-5 compatible byte-pair encoding with multiprocessing support.
+Training uses chunked file processing (300MB chunks) to handle large datasets without
+loading entire files into memory.
 
-Key Features:
-- GPT-2/GPT-5 compatible pre-tokenization using regex patterns
-- Memory-efficient chunked file processing with multiprocessing
-- Deterministic BPE training with lexicographic tie-breaking
-- Special token handling (atomic, never split)
-- Progress logging with timing breakdowns
-- Smart chunking at special token boundaries (300MB target)
+Algorithm: Iteratively merges most frequent byte pairs using lexicographic tie-breaking
+for deterministic results. Special tokens are kept atomic and never split.
 
-Architecture:
-- BPETokenizer: Main tokenizer class with training capabilities
-- TrainResult: Dataclass for training output (vocab + merges)
-- TrainingLogger: Separated logging logic for clean code
-
-Current Implementation Status:
-- ✅ BPE training algorithm with deterministic merges
-- ✅ Memory-efficient file processing (chunked, multiprocessing)
-- ✅ Special token handling (combined regex pattern)
-- ✅ Vocabulary building from merges
-- ⚠️  Encoding/decoding methods (TODO: needed for 22 tokenizer tests)
-
-Dependencies:
-- regex: Advanced regex engine with Unicode support
-- collections.Counter: Efficient counting of token frequencies
-- cs336_basics.utils: Optimized file chunking utilities
-- cs336_basics.training_logger: Clean logging separation
-
-BPE Algorithm:
-==============
-
-Training Process (Implemented):
-1. Pre-tokenization: Split text using GPT-2/GPT-5 regex
-2. Count word frequencies with multiprocessing
-3. Iteratively merge most frequent byte pairs (deterministic tie-breaking)
-4. Build vocabulary: special tokens + base bytes + merged tokens
-
-Tie-Breaking Strategy:
-- When pair counts are equal, use lexicographic ordering (select minimum)
-- Ensures deterministic, reproducible results
-- Formula: max_count = max(counts); best_pair = min(pairs with max_count)
-
-Encoding Process (TODO):
-1. Pre-tokenize input text using same regex
-2. Apply learned merges in order to each pre-token
-3. Return token IDs from vocabulary
-
-Decoding Process (TODO):
-1. Look up tokens in vocabulary to get bytes
-2. Concatenate bytes and decode to UTF-8 string
-
-Performance:
-- Trains 500-vocab BPE on small corpus in ~2.3s
-- Memory efficient: processes 300MB chunks, never loads entire file
-- Multiprocessing with auto-adjusted worker count
+Classes:
+    BPETokenizer: Main tokenizer with training capabilities
+    TrainResult: Training output containing vocab and merge operations
 """
 
 import regex as re
@@ -89,13 +42,12 @@ class BPETokenizer:
     """BPE (Byte Pair Encoding) Tokenizer for CS336 Assignment 1."""
 
     def __init__(self, pat_str: str, special_tokens: list[str], verbose: bool = False) -> None:
-        """
-        Initialize the BPE tokenizer with GPT-2 pre-tokenization pattern.
+        """Initialize BPE tokenizer.
 
         Args:
-            pat_str: Regex pattern string for pre-tokenization (e.g., GPT2_PAT_STR)
+            pat_str: Regex pattern for pre-tokenization (GPT2_PAT_STR or GPT5_PAT_STR)
             special_tokens: List of special tokens (e.g., ['<|endoftext|>'])
-            verbose: Whether to print detailed progress information (default: False)
+            verbose: Whether to print progress information
         """
         self.compiled_pat = re.compile(pat_str)
         self.vocab: dict[int, bytes] = {}
@@ -111,16 +63,9 @@ class BPETokenizer:
             self.combined_pat = self.compiled_pat
 
     def init_vocab(self, merges: list[tuple[bytes, bytes]] | None = None) -> None:
-        """
-        Initialize vocabulary with special tokens, base bytes, and optional merges.
+        """Initialize vocabulary: special tokens + base bytes + merge results.
 
-        Args:
-            merges: Optional list of BPE merge pairs from training
-
-        Creates vocab mapping:
-            0 to len(special_tokens)-1: Special tokens (from self.special_tokens)
-            len(special_tokens) to len(special_tokens)+255: Individual byte values (256 bytes)
-            len(special_tokens)+256 onwards: Merged tokens from BPE training
+        Vocab IDs: [0..n-1]: special tokens, [n..n+255]: bytes, [n+256..]: merges
         """
         self.vocab = {}
 
@@ -141,15 +86,7 @@ class BPETokenizer:
 
 
     def _get_pair_counts(self, word_counts: Counter[tuple[bytes, ...]]) -> Counter[tuple[bytes, bytes]]:
-        """
-        Count all adjacent byte pairs across all words.
-
-        Args:
-            word_counts: Counter mapping words (tuples of bytes) to their frequencies
-
-        Returns:
-            Counter mapping byte pairs to their total occurrence count
-        """
+        """Count adjacent byte pairs weighted by word frequency."""
         pair_counts: Counter[tuple[bytes, bytes]] = Counter()
 
         for word, count in word_counts.items():
@@ -161,16 +98,7 @@ class BPETokenizer:
         return pair_counts
 
     def _merge_pair(self, word: tuple[bytes, ...], pair: tuple[bytes, bytes]) -> tuple[bytes, ...]:
-        """
-        Merge all occurrences of a byte pair in a word.
-
-        Args:
-            word: Tuple of bytes representing a word
-            pair: Pair of bytes to merge
-
-        Returns:
-            New word with all occurrences of the pair merged
-        """
+        """Merge all occurrences of a byte pair in a word."""
         if len(word) < 2:
             return word
 
@@ -190,16 +118,7 @@ class BPETokenizer:
         return tuple(new_word)
 
     def _apply_merge(self, word_counts: Counter[tuple[bytes, ...]], pair: tuple[bytes, bytes]) -> Counter[tuple[bytes, ...]]:
-        """
-        Apply a merge to all words in the word counts.
-
-        Args:
-            word_counts: Counter of word frequencies
-            pair: Byte pair to merge
-
-        Returns:
-            New Counter with the merge applied to all words
-        """
+        """Apply merge to all words in Counter."""
         new_counts: Counter[tuple[bytes, ...]] = Counter()
 
         for word, count in word_counts.items():
@@ -209,17 +128,7 @@ class BPETokenizer:
         return new_counts
 
     def _process_chunk(self, file_path: str, start: int, end: int) -> Counter[tuple[bytes, ...]]:
-        """
-        Process a single chunk of the file and return token counts.
-
-        Args:
-            file_path: Path to the data file
-            start: Start byte position
-            end: End byte position
-
-        Returns:
-            Counter: Token counts for this chunk
-        """
+        """Process file chunk and return token counts."""
         with open(file_path, "rb") as f:
             f.seek(start)
             chunk = f.read(end - start).decode("utf-8")
@@ -244,17 +153,7 @@ class BPETokenizer:
             return word_counts
 
     def get_word_counts(self, filename: str, num_workers: int | None = None, use_cache: bool = True) -> Counter[tuple[bytes, ...]]:
-        """
-        Get word frequency counts from a data file using multiprocessing.
-
-        Args:
-            filename: Name of the data file to process
-            num_workers: Number of worker processes (default: CPU count)
-            use_cache: Whether to use cached word counts if available (default: True)
-
-        Returns:
-            Counter mapping word tuples (tuples of bytes) to their frequencies
-        """
+        """Get word counts using multiprocessing with caching support."""
         self.logger.start_timer("word_counting")
 
         # Try cache first if enabled
@@ -300,16 +199,7 @@ class BPETokenizer:
         return total_counts
 
     def train(self, input_path: str, vocab_size: int) -> TrainResult:
-        """
-        Train BPE tokenizer on input data.
-
-        Args:
-            input_path: Path to training data file
-            vocab_size: Target vocabulary size
-
-        Returns:
-            Dictionary with 'vocab' (token ID to bytes mapping) and 'merges' (list of merge operations)
-        """
+        """Train BPE tokenizer on input data."""
         self.logger.start_timer("train")
         self.logger.log_step("Step 1: Getting initial word counts...", "word_counting")
 

@@ -12,7 +12,6 @@ assignments and components, organized by functionality:
 - training_logger: Progress logging for training workflows
 - import_utils: Import setup utilities for scripts
 
-Requires Python 3.13+
 """
 
 # Time utilities
