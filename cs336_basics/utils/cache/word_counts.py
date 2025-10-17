@@ -52,8 +52,8 @@ class WordCountsCache(JSONCache[Counter[tuple[bytes, ...]]]):
         """
         Get the cache file path for a given key.
 
-        Overrides base class to handle both filenames and full paths gracefully.
-        Extracts just the filename if a full path is provided.
+        Organizes cache files by dataset name in subdirectories.
+        Creates: data/cache/{dataset_name}/word_counts.json
 
         Args:
             key: Cache key (can be filename or full path)
@@ -65,14 +65,19 @@ class WordCountsCache(JSONCache[Counter[tuple[bytes, ...]]]):
         if '/' in key or '\\' in key:
             key = Path(key).name
 
-        return super().get_cache_path(key)
+        # Create subdirectory for this dataset
+        dataset_dir = self.cache_dir / key
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+
+        # Return path without repeating the dataset name in filename
+        return dataset_dir / f"{self.cache_prefix}.json"
 
     def serialize(self, data: Counter[tuple[bytes, ...]]) -> dict[str, Any]:
         """
         Serialize word counts to JSON format.
 
         Converts Counter[tuple[bytes, ...]] to dictionary with:
-        - Keys: JSON arrays of hex-encoded byte strings
+        - Keys: JSON arrays of byte strings (UTF-8 if possible, hex prefixed with "\\x" otherwise)
         - Values: frequency counts
         - Optionally sorted by frequency (descending) with lexicographic tie-breaking
 
@@ -91,10 +96,20 @@ class WordCountsCache(JSONCache[Counter[tuple[bytes, ...]]]):
         else:
             items = data.items()
 
-        # Convert each word tuple to hex-encoded JSON array
+        # Convert each word tuple to string array (UTF-8 or hex)
         for word_tuple, count in items:
-            # Convert bytes objects to hex strings, then serialize as JSON array
-            key = json.dumps([b.hex() for b in word_tuple])
+            key_parts = []
+            for b in word_tuple:
+                try:
+                    # Try to decode as UTF-8
+                    decoded = b.decode('utf-8')
+                    # Use the string directly if it's printable and doesn't need escaping
+                    key_parts.append(decoded)
+                except UnicodeDecodeError:
+                    # Fall back to hex with \x prefix for non-UTF-8 bytes
+                    key_parts.append(f"\\x{b.hex()}")
+
+            key = json.dumps(key_parts)
             serializable_data[key] = count
 
         return serializable_data
@@ -103,7 +118,7 @@ class WordCountsCache(JSONCache[Counter[tuple[bytes, ...]]]):
         """
         Deserialize JSON data back to word counts.
 
-        Converts dictionary with hex-encoded keys back to Counter[tuple[bytes, ...]].
+        Converts dictionary with UTF-8/hex keys back to Counter[tuple[bytes, ...]].
 
         Args:
             json_data: Dictionary loaded from JSON file
@@ -117,10 +132,20 @@ class WordCountsCache(JSONCache[Counter[tuple[bytes, ...]]]):
         word_counts: Counter[tuple[bytes, ...]] = Counter()
 
         for key, count in json_data.items():
-            # Parse the JSON array and convert hex strings back to bytes
-            hex_list = json.loads(key)
-            word_tuple = tuple(bytes.fromhex(hex_str) for hex_str in hex_list)
-            word_counts[word_tuple] = count
+            # Parse the JSON array
+            str_list = json.loads(key)
+            word_tuple_parts = []
+
+            for s in str_list:
+                if isinstance(s, str) and s.startswith("\\x"):
+                    # Hex-encoded bytes: "\x48656c6c6f" -> b'Hello'
+                    hex_str = s[2:]  # Remove \x prefix
+                    word_tuple_parts.append(bytes.fromhex(hex_str))
+                else:
+                    # UTF-8 string: encode back to bytes
+                    word_tuple_parts.append(s.encode('utf-8'))
+
+            word_counts[tuple(word_tuple_parts)] = count
 
         return word_counts
 

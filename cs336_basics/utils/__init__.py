@@ -38,7 +38,7 @@ from .file_processing import (
 )
 
 # Cache utilities (exported from cache subpackage)
-from .cache import JSONCache, WordCountsCache, PairCountsCache, MergesCache
+from .cache import JSONCache, WordCountsCache, PairCountsCache, MergesCache, VocabCache
 
 # Training utilities
 from .training_logger import TrainingLogger
@@ -68,6 +68,7 @@ __all__ = [
     'WordCountsCache',
     'PairCountsCache',
     'MergesCache',
+    'VocabCache',
     # Training
     'TrainingLogger',
     # Import

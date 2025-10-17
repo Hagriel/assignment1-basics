@@ -50,8 +50,8 @@ class MergesCache(JSONCache[list[tuple[bytes, bytes]]]):
         """
         Get the cache file path for a given key.
 
-        Overrides base class to handle both filenames and full paths gracefully.
-        Extracts just the filename if a full path is provided.
+        Organizes cache files by dataset name in subdirectories.
+        Creates: data/cache/{dataset_name}/merges_vocab{size}.json
 
         Args:
             key: Cache key in format "{filename}_vocab{vocab_size}"
@@ -59,7 +59,7 @@ class MergesCache(JSONCache[list[tuple[bytes, bytes]]]):
         Returns:
             Path to the cache file
         """
-        # Extract just the filename if a full path was provided (before _vocab suffix)
+        # Extract the filename part (before _vocab suffix)
         if '/' in key or '\\' in key:
             # Split on _vocab to separate path from vocab_size
             parts = key.split('_vocab')
@@ -69,14 +69,29 @@ class MergesCache(JSONCache[list[tuple[bytes, bytes]]]):
             else:
                 key = Path(key).name
 
-        return super().get_cache_path(key)
+        # Get dataset name (part before _vocab)
+        if '_vocab' in key:
+            dataset_name = key.split('_vocab')[0]
+        else:
+            dataset_name = key
+
+        # Create subdirectory for this dataset
+        dataset_dir = self.cache_dir / dataset_name
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+
+        # Include vocab_size in filename: merges_vocab500.json
+        if '_vocab' in key:
+            vocab_suffix = key.split('_vocab')[1]
+            return dataset_dir / f"{self.cache_prefix}_vocab{vocab_suffix}.json"
+        else:
+            return dataset_dir / f"{self.cache_prefix}.json"
 
     def serialize(self, data: list[tuple[bytes, bytes]]) -> dict[str, Any]:
         """
         Serialize merge sequence to JSON format.
 
         Converts list[tuple[bytes, bytes]] to dictionary with:
-        - "merges" key containing array of 2-element hex-encoded byte pairs
+        - "merges" key containing array of 2-element byte strings (UTF-8 or hex)
         - "count" key with total number of merges (metadata)
 
         Args:
@@ -88,8 +103,17 @@ class MergesCache(JSONCache[list[tuple[bytes, bytes]]]):
         merges_list = []
 
         for left, right in data:
-            # Each merge is a 2-element array of hex-encoded bytes
-            merges_list.append([left.hex(), right.hex()])
+            pair_parts = []
+            for b in [left, right]:
+                try:
+                    # Try to decode as UTF-8
+                    decoded = b.decode('utf-8')
+                    pair_parts.append(decoded)
+                except UnicodeDecodeError:
+                    # Fall back to hex with \x prefix
+                    pair_parts.append(f"\\x{b.hex()}")
+
+            merges_list.append(pair_parts)
 
         return {
             "merges": merges_list,
@@ -120,9 +144,17 @@ class MergesCache(JSONCache[list[tuple[bytes, bytes]]]):
             if not isinstance(merge_pair, list) or len(merge_pair) != 2:
                 raise ValueError(f"Expected merge pair with 2 elements, got {merge_pair}")
 
-            left = bytes.fromhex(merge_pair[0])
-            right = bytes.fromhex(merge_pair[1])
-            merges_list.append((left, right))
+            pair_parts = []
+            for s in merge_pair:
+                if isinstance(s, str) and s.startswith("\\x"):
+                    # Hex-encoded bytes
+                    hex_str = s[2:]  # Remove \x prefix
+                    pair_parts.append(bytes.fromhex(hex_str))
+                else:
+                    # UTF-8 string: encode back to bytes
+                    pair_parts.append(s.encode('utf-8'))
+
+            merges_list.append((pair_parts[0], pair_parts[1]))
 
         return merges_list
 

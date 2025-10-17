@@ -82,7 +82,15 @@ class TrainingLogger:
         if self.verbose:
             progress = (current / total) * 100
             elapsed = self.get_elapsed(timer_name)
-            print(f"  Progress: {current:,}/{total:,} ({progress:.0f}%) - {format_time(elapsed)} elapsed")
+
+            # Calculate rate and estimated time remaining
+            rate = current / elapsed if elapsed > 0 else 0
+            remaining = (total - current) / rate if rate > 0 else 0
+
+            rate_str = f"{rate:.1f} per sec" if rate >= 1 else f"{rate:.2f} per sec"
+            remaining_str = f"~{format_time(remaining)} remaining"
+
+            print(f"  Progress: {current:,}/{total:,} ({progress:.0f}%) - {format_time(elapsed)} elapsed ({rate_str}, {remaining_str})")
 
     def log_summary(self, title: str, items: dict[str, tuple[float, float]]) -> None:
         """

@@ -52,8 +52,8 @@ class PairCountsCache(JSONCache[Counter[tuple[bytes, bytes]]]):
         """
         Get the cache file path for a given key.
 
-        Overrides base class to handle both filenames and full paths gracefully.
-        Extracts just the filename if a full path is provided.
+        Organizes cache files by dataset name in subdirectories.
+        Creates: data/cache/{dataset_name}/pair_counts.json
 
         Args:
             key: Cache key (can be filename or full path)
@@ -65,14 +65,19 @@ class PairCountsCache(JSONCache[Counter[tuple[bytes, bytes]]]):
         if '/' in key or '\\' in key:
             key = Path(key).name
 
-        return super().get_cache_path(key)
+        # Create subdirectory for this dataset
+        dataset_dir = self.cache_dir / key
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+
+        # Return path without repeating the dataset name in filename
+        return dataset_dir / f"{self.cache_prefix}.json"
 
     def serialize(self, data: Counter[tuple[bytes, bytes]]) -> dict[str, Any]:
         """
         Serialize pair counts to JSON format.
 
         Converts Counter[tuple[bytes, bytes]] to dictionary with:
-        - Keys: JSON arrays of 2 hex-encoded byte strings
+        - Keys: JSON arrays of 2 byte strings (UTF-8 if possible, hex prefixed with "\\x" otherwise)
         - Values: frequency counts
         - Optionally sorted by frequency (descending) with lexicographic tie-breaking
 
@@ -91,10 +96,19 @@ class PairCountsCache(JSONCache[Counter[tuple[bytes, bytes]]]):
         else:
             items = data.items()
 
-        # Convert each pair to hex-encoded JSON array
+        # Convert each pair to string array (UTF-8 or hex)
         for (left, right), count in items:
-            # Each pair is exactly 2 bytes objects
-            key = json.dumps([left.hex(), right.hex()])
+            key_parts = []
+            for b in [left, right]:
+                try:
+                    # Try to decode as UTF-8
+                    decoded = b.decode('utf-8')
+                    key_parts.append(decoded)
+                except UnicodeDecodeError:
+                    # Fall back to hex with \x prefix
+                    key_parts.append(f"\\x{b.hex()}")
+
+            key = json.dumps(key_parts)
             serializable_data[key] = count
 
         return serializable_data
@@ -103,7 +117,7 @@ class PairCountsCache(JSONCache[Counter[tuple[bytes, bytes]]]):
         """
         Deserialize JSON data back to pair counts.
 
-        Converts dictionary with hex-encoded keys back to Counter[tuple[bytes, bytes]].
+        Converts dictionary with UTF-8/hex keys back to Counter[tuple[bytes, bytes]].
 
         Args:
             json_data: Dictionary loaded from JSON file
@@ -117,14 +131,22 @@ class PairCountsCache(JSONCache[Counter[tuple[bytes, bytes]]]):
         pair_counts: Counter[tuple[bytes, bytes]] = Counter()
 
         for key, count in json_data.items():
-            # Parse the JSON array and convert hex strings back to bytes
-            hex_list = json.loads(key)
-            if len(hex_list) != 2:
-                raise ValueError(f"Expected pair with 2 elements, got {len(hex_list)}")
+            # Parse the JSON array
+            str_list = json.loads(key)
+            if len(str_list) != 2:
+                raise ValueError(f"Expected pair with 2 elements, got {len(str_list)}")
 
-            left = bytes.fromhex(hex_list[0])
-            right = bytes.fromhex(hex_list[1])
-            pair_counts[(left, right)] = count
+            pair_parts = []
+            for s in str_list:
+                if isinstance(s, str) and s.startswith("\\x"):
+                    # Hex-encoded bytes
+                    hex_str = s[2:]  # Remove \x prefix
+                    pair_parts.append(bytes.fromhex(hex_str))
+                else:
+                    # UTF-8 string: encode back to bytes
+                    pair_parts.append(s.encode('utf-8'))
+
+            pair_counts[(pair_parts[0], pair_parts[1])] = count
 
         return pair_counts
 

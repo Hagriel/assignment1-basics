@@ -237,7 +237,7 @@ class JSONCache(Generic[T]):
     def _log_save(self, cache_path: Path) -> None:
         """Hook for logging save operations (can be overridden)."""
         if self.logger and hasattr(self.logger, 'verbose') and self.logger.verbose:
-            print(f"Saved cache: {cache_path}")
+            print(f"Saved: {cache_path.name}")
 
     def _log_load(self, cache_path: Path, data: T) -> None:
         """Hook for logging load operations (can be overridden)."""
