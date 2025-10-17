@@ -562,7 +562,16 @@ def get_tokenizer(
     Returns:
         A BPE tokenizer that uses the provided vocab, merges, and special tokens.
     """
-    raise NotImplementedError
+    # Create BPETokenizer instance with special tokens
+    bpe = BPETokenizer(GPT2_PAT_STR, special_tokens or [], verbose=False)
+
+    # Use the provided vocab directly (don't reconstruct)
+    bpe.vocab = vocab
+
+    # Store merges for encoding (needed to apply merges in order)
+    bpe.merges = merges
+
+    return bpe
 
 
 def run_train_bpe(
