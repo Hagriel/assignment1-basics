@@ -54,24 +54,13 @@ class CheckpointManager:
 
     @staticmethod
     def build_vocab(special_tokens: list[str], merges: list[tuple[bytes, bytes]]) -> dict[int, bytes]:
-        """Build vocabulary from special tokens and merges."""
-        vocab = {}
+        """Build vocabulary from special tokens and merges.
 
-        # Special tokens
-        for token_idx, token in enumerate(special_tokens):
-            vocab[token_idx] = token.encode('utf-8')
-
-        num_special = len(special_tokens)
-
-        # Base bytes
-        for byte_value in range(256):
-            vocab[num_special + byte_value] = bytes([byte_value])
-
-        # Merges
-        for merge_idx, (left, right) in enumerate(merges):
-            vocab[num_special + 256 + merge_idx] = left + right
-
-        return vocab
+        Note: Delegates to TokenizerDataManager to avoid duplication.
+        """
+        from cs336_basics.assignment_1.tokenizer_data_manager import TokenizerDataManager
+        manager = TokenizerDataManager(verbose=False)
+        return manager.build_vocab(special_tokens, merges)
 
     def load_or_initialize(self, num_merges_needed: int, special_tokens: list[str]) -> dict[str, Any]:
         """
