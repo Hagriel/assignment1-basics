@@ -10,6 +10,7 @@ Modules:
 - pair_counts: Domain-specific cache for BPE tokenizer byte pair frequency counts
 - merges: Domain-specific cache for BPE tokenizer merge operations
 - vocab: Domain-specific cache for BPE tokenizer vocabulary
+- checkpoint: Checkpoint manager for incremental resumable BPE training
 
 Public API:
 - JSONCache: Universal base class for JSON file caching
@@ -17,6 +18,7 @@ Public API:
 - PairCountsCache: Specialized cache for byte pair counts with hex-encoded pairs
 - MergesCache: Specialized cache for BPE merge sequences with vocab_size keys
 - VocabCache: Specialized cache for vocabulary mappings with vocab_size keys
+- CheckpointManager: Manager for incremental training checkpoints (reusable across vocab sizes)
 """
 
 from .base import JSONCache
@@ -24,5 +26,6 @@ from .word_counts import WordCountsCache
 from .pair_counts import PairCountsCache
 from .merges import MergesCache
 from .vocab import VocabCache
+from .checkpoint import CheckpointManager
 
-__all__ = ['JSONCache', 'WordCountsCache', 'PairCountsCache', 'MergesCache', 'VocabCache']
+__all__ = ['JSONCache', 'WordCountsCache', 'PairCountsCache', 'MergesCache', 'VocabCache', 'CheckpointManager']

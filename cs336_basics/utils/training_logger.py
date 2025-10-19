@@ -22,10 +22,23 @@ class TrainingLogger:
         """
         self.verbose = verbose
         self.timers: dict[str, float] = {}
+        # Track last progress state for calculating block speed
+        self.last_progress: dict[str, dict[str, float]] = {}  # {timer_name: {count: int, time: float}}
+        # Track starting offset for each timer (for resumable operations)
+        self.start_offsets: dict[str, int] = {}  # {timer_name: starting_count}
+        # Track last progress log time for adaptive intervals
+        self.last_progress_log_time: dict[str, float] = {}  # {timer_name: last_log_time}
 
-    def start_timer(self, name: str) -> None:
-        """Start a named timer."""
+    def start_timer(self, name: str, start_count: int = 0) -> None:
+        """
+        Start a named timer.
+
+        Args:
+            name: Name of the timer
+            start_count: Starting iteration count (for resumable operations)
+        """
         self.timers[name] = time.time()
+        self.start_offsets[name] = start_count
 
     def get_elapsed(self, name: str) -> float:
         """Get elapsed time for a named timer."""
@@ -72,25 +85,89 @@ class TrainingLogger:
 
     def log_progress(self, current: int, total: int, timer_name: str) -> None:
         """
-        Log progress during an iterative operation.
+        Log progress during an iterative operation with average and current block speed.
 
         Args:
-            current: Current iteration number
+            current: Current iteration number (absolute value)
             total: Total number of iterations
             timer_name: Name of the timer tracking this operation
         """
         if self.verbose:
+            # Track starting offset on first call (for resumable operations)
+            if timer_name not in self.start_offsets:
+                self.start_offsets[timer_name] = current
+
+            # Calculate incremental progress since timer started
+            start_offset = self.start_offsets[timer_name]
+            incremental_progress = current - start_offset
+
             progress = (current / total) * 100
             elapsed = self.get_elapsed(timer_name)
 
-            # Calculate rate and estimated time remaining
-            rate = current / elapsed if elapsed > 0 else 0
-            remaining = (total - current) / rate if rate > 0 else 0
+            # Calculate average speed (based on incremental progress)
+            avg_speed = incremental_progress / elapsed if elapsed > 0 else 0
 
-            rate_str = f"{rate:.1f} per sec" if rate >= 1 else f"{rate:.2f} per sec"
+            # Calculate current block speed (since last progress log)
+            if timer_name in self.last_progress:
+                last_count = self.last_progress[timer_name]['count']
+                last_time = self.last_progress[timer_name]['time']
+                block_count = current - last_count
+                block_time = elapsed - last_time
+                current_speed = block_count / block_time if block_time > 0 else 0
+            else:
+                # First progress log - current speed equals average speed
+                current_speed = avg_speed
+
+            # Update tracking for next progress log
+            self.last_progress[timer_name] = {'count': current, 'time': elapsed}
+
+            # Calculate remaining time based on average speed
+            remaining = (total - current) / avg_speed if avg_speed > 0 else 0
+
+            # Format speed strings
+            avg_speed_str = f"{avg_speed:.2f} per sec"
+            current_speed_str = f"{current_speed:.2f} per sec"
             remaining_str = f"~{format_time(remaining)} remaining"
 
-            print(f"  Progress: {current:,}/{total:,} ({progress:.0f}%) - {format_time(elapsed)} elapsed ({rate_str}, {remaining_str})")
+            print(f"  Progress: {current:,}/{total:,} ({progress:.0f}%) - {format_time(elapsed)} elapsed (avg: {avg_speed_str}, current: {current_speed_str}, {remaining_str})")
+
+    def log_progress_adaptive(
+        self,
+        current: int,
+        total: int,
+        timer_name: str,
+        progress_interval_seconds: int = 600
+    ) -> None:
+        """
+        Log progress adaptively: every 10% milestone OR every N seconds (whichever comes first).
+
+        Args:
+            current: Current iteration number (absolute value)
+            total: Total number of iterations
+            timer_name: Name of the timer tracking this operation
+            progress_interval_seconds: Time interval in seconds (default: 600 = 10 minutes)
+        """
+        if not self.verbose:
+            return
+
+        # Initialize last log time on first call
+        if timer_name not in self.last_progress_log_time:
+            self.last_progress_log_time[timer_name] = time.time()
+
+        current_time = time.time()
+        time_since_last_log = current_time - self.last_progress_log_time[timer_name]
+
+        # Calculate if we're at a 10% milestone
+        is_10_percent_milestone = (current % max(1, total // 10)) == 0
+
+        # Check if time interval elapsed
+        is_time_interval_elapsed = time_since_last_log >= progress_interval_seconds
+
+        # Log if either condition met
+        if is_10_percent_milestone or is_time_interval_elapsed:
+            self.log_progress(current, total, timer_name)
+            self.last_progress_log_time[timer_name] = current_time
+
 
     def log_summary(self, title: str, items: dict[str, tuple[float, float]]) -> None:
         """
