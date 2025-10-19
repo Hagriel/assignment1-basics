@@ -281,7 +281,8 @@ class TokenizerDataManager:
             return state
 
         # Load from cache
-        assert dataset_name is not None and vocab_size is not None
+        if dataset_name is None or vocab_size is None:
+            raise ValueError("Both dataset_name and vocab_size must be provided for cache lookup")
         state = self.load_vocab_from_cache(special_tokens, dataset_name, vocab_size)
         if state is None:
             raise ValueError(f"Cache miss: {dataset_name}, vocab_size={vocab_size}")
@@ -324,5 +325,6 @@ class TokenizerDataManager:
             return self.load_vocab_from_direct(special_tokens, vocab, merges)
 
         # Load from cache (returns None on miss)
-        assert dataset_name is not None and vocab_size is not None
+        if dataset_name is None or vocab_size is None:
+            raise ValueError("Both dataset_name and vocab_size must be provided for cache lookup")
         return self.load_vocab_from_cache(special_tokens, dataset_name, vocab_size)

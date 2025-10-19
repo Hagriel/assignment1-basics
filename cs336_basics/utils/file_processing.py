@@ -97,8 +97,8 @@ def find_chunk_boundaries(
     # Search window size: look this far before/after estimated boundary for special token
     search_window = 10 * 1024 * 1024  # 10MB window
 
-    for bi in range(1, len(chunk_boundaries) - 1):
-        estimated_position = chunk_boundaries[bi]
+    for boundary_idx in range(1, len(chunk_boundaries) - 1):
+        estimated_position = chunk_boundaries[boundary_idx]
 
         # Read a window around the estimated position
         search_start = max(0, estimated_position - search_window // 2)
@@ -108,7 +108,7 @@ def find_chunk_boundaries(
         window = file.read(search_end - search_start)
 
         if not window:
-            chunk_boundaries[bi] = file_size
+            chunk_boundaries[boundary_idx] = file_size
             continue
 
         # Find all occurrences of special token in the window
@@ -124,11 +124,11 @@ def find_chunk_boundaries(
         if occurrences:
             # Find the occurrence closest to our estimated position
             closest = min(occurrences, key=lambda pos: abs(pos - estimated_position))
-            chunk_boundaries[bi] = closest
+            chunk_boundaries[boundary_idx] = closest
         else:
             # No special token found in window, keep estimated position
             # (This is a fallback - ideally special tokens should be common enough)
-            chunk_boundaries[bi] = estimated_position
+            chunk_boundaries[boundary_idx] = estimated_position
 
     # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
     return sorted(set(chunk_boundaries))

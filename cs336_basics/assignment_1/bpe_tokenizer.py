@@ -282,28 +282,29 @@ class BPETokenizer(Tokenizer):
                     new_word_counts[word] += count
                     continue
 
-                # Check if word actually contains the pair to merge
+                # Check if word contains the pair to merge
                 has_pair = False
-                for pos in range(len(word) - 1):
-                    if word[pos] == pair_to_merge[0] and word[pos + 1] == pair_to_merge[1]:
+                for position in range(len(word) - 1):
+                    if word[position] == pair_to_merge[0] and word[position + 1] == pair_to_merge[1]:
                         has_pair = True
                         break
 
                 if has_pair:
-                    # Get old pairs before merge
-                    for pos in range(len(word) - 1):
-                        old_pair = (word[pos], word[pos + 1])
+                    # Record old pairs before merge
+                    for position in range(len(word) - 1):
+                        old_pair = (word[position], word[position + 1])
                         pair_deltas[old_pair] -= count
 
                     # Apply merge
                     merged_word = self._merge_pair(word, pair_to_merge)
                     new_word_counts[merged_word] += count
 
-                    # Get new pairs after merge
-                    for pos in range(len(merged_word) - 1):
-                        new_pair = (merged_word[pos], merged_word[pos + 1])
+                    # Record new pairs after merge
+                    for position in range(len(merged_word) - 1):
+                        new_pair = (merged_word[position], merged_word[position + 1])
                         pair_deltas[new_pair] += count
                 else:
+                    # No merge needed - keep word as is
                     new_word_counts[word] += count
 
             word_counts = new_word_counts

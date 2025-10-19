@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .base import JSONCache
+from .base import JSONCache, get_default_cache_dir, encode_bytes_for_json, decode_bytes_from_json
 
 if TYPE_CHECKING:
     pass
@@ -37,14 +37,9 @@ class MergesCache(JSONCache[list[tuple[bytes, bytes]]]):
             logger: Optional logger with log_stats method (default: None)
         """
         if cache_dir is None:
-            cache_dir = self._get_default_cache_dir()
+            cache_dir = get_default_cache_dir()
 
         super().__init__(cache_dir=cache_dir, cache_prefix="merges", logger=logger)
-
-    def _get_default_cache_dir(self) -> Path:
-        """Get the default cache directory (project_root/data/cache)."""
-        from cs336_basics.utils import get_project_root
-        return get_project_root() / "data" / "cache"
 
     def get_cache_path(self, key: str) -> Path:
         """
@@ -103,16 +98,7 @@ class MergesCache(JSONCache[list[tuple[bytes, bytes]]]):
         merges_list = []
 
         for left, right in data:
-            pair_parts = []
-            for b in [left, right]:
-                try:
-                    # Try to decode as UTF-8
-                    decoded = b.decode('utf-8')
-                    pair_parts.append(decoded)
-                except UnicodeDecodeError:
-                    # Fall back to hex with \x prefix
-                    pair_parts.append(f"\\x{b.hex()}")
-
+            pair_parts = [encode_bytes_for_json(left), encode_bytes_for_json(right)]
             merges_list.append(pair_parts)
 
         return {
@@ -144,16 +130,7 @@ class MergesCache(JSONCache[list[tuple[bytes, bytes]]]):
             if not isinstance(merge_pair, list) or len(merge_pair) != 2:
                 raise ValueError(f"Expected merge pair with 2 elements, got {merge_pair}")
 
-            pair_parts = []
-            for s in merge_pair:
-                if isinstance(s, str) and s.startswith("\\x"):
-                    # Hex-encoded bytes
-                    hex_str = s[2:]  # Remove \x prefix
-                    pair_parts.append(bytes.fromhex(hex_str))
-                else:
-                    # UTF-8 string: encode back to bytes
-                    pair_parts.append(s.encode('utf-8'))
-
+            pair_parts = [decode_bytes_from_json(s) for s in merge_pair]
             merges_list.append((pair_parts[0], pair_parts[1]))
 
         return merges_list

@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .base import JSONCache
+from .base import JSONCache, get_default_cache_dir, encode_bytes_for_json, decode_bytes_from_json
 
 if TYPE_CHECKING:
     pass
@@ -36,14 +36,9 @@ class VocabCache(JSONCache[dict[int, bytes]]):
             logger: Optional logger with log_stats method (default: None)
         """
         if cache_dir is None:
-            cache_dir = self._get_default_cache_dir()
+            cache_dir = get_default_cache_dir()
 
         super().__init__(cache_dir=cache_dir, cache_prefix="vocab", logger=logger)
-
-    def _get_default_cache_dir(self) -> Path:
-        """Get the default cache directory (project_root/data/cache)."""
-        from cs336_basics.utils import get_project_root
-        return get_project_root() / "data" / "cache"
 
     def get_cache_path(self, key: str) -> Path:
         """
@@ -102,13 +97,7 @@ class VocabCache(JSONCache[dict[int, bytes]]):
         serializable_data = {}
 
         for token_id, token_bytes in data.items():
-            try:
-                # Try to decode as UTF-8
-                decoded = token_bytes.decode('utf-8')
-                serializable_data[str(token_id)] = decoded
-            except UnicodeDecodeError:
-                # Fall back to hex with \x prefix
-                serializable_data[str(token_id)] = f"\\x{token_bytes.hex()}"
+            serializable_data[str(token_id)] = encode_bytes_for_json(token_bytes)
 
         return serializable_data
 
@@ -131,14 +120,7 @@ class VocabCache(JSONCache[dict[int, bytes]]):
 
         for key, value in json_data.items():
             token_id = int(key)
-
-            if isinstance(value, str) and value.startswith("\\x"):
-                # Hex-encoded bytes
-                hex_str = value[2:]  # Remove \x prefix
-                vocab[token_id] = bytes.fromhex(hex_str)
-            else:
-                # UTF-8 string: encode back to bytes
-                vocab[token_id] = value.encode('utf-8')
+            vocab[token_id] = decode_bytes_from_json(value)
 
         return vocab
 

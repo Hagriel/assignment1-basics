@@ -13,7 +13,7 @@ from pathlib import Path
 from collections import Counter
 from typing import TYPE_CHECKING, Any
 
-from .base import JSONCache
+from .base import JSONCache, get_default_cache_dir, encode_bytes_for_json, decode_bytes_from_json
 
 if TYPE_CHECKING:
     pass
@@ -38,15 +38,10 @@ class PairCountsCache(JSONCache[Counter[tuple[bytes, bytes]]]):
             logger: Optional logger with log_stats method (default: None)
         """
         if cache_dir is None:
-            cache_dir = self._get_default_cache_dir()
+            cache_dir = get_default_cache_dir()
 
         super().__init__(cache_dir=cache_dir, cache_prefix="pair_counts", logger=logger)
         self._sort_by_frequency = True  # Default behavior for pair counts
-
-    def _get_default_cache_dir(self) -> Path:
-        """Get the default cache directory (project_root/data/cache)."""
-        from cs336_basics.utils import get_project_root
-        return get_project_root() / "data" / "cache"
 
     def get_cache_path(self, key: str) -> Path:
         """
@@ -98,16 +93,7 @@ class PairCountsCache(JSONCache[Counter[tuple[bytes, bytes]]]):
 
         # Convert each pair to string array (UTF-8 or hex)
         for (left, right), count in items:
-            key_parts = []
-            for b in [left, right]:
-                try:
-                    # Try to decode as UTF-8
-                    decoded = b.decode('utf-8')
-                    key_parts.append(decoded)
-                except UnicodeDecodeError:
-                    # Fall back to hex with \x prefix
-                    key_parts.append(f"\\x{b.hex()}")
-
+            key_parts = [encode_bytes_for_json(left), encode_bytes_for_json(right)]
             key = json.dumps(key_parts)
             serializable_data[key] = count
 
@@ -136,16 +122,7 @@ class PairCountsCache(JSONCache[Counter[tuple[bytes, bytes]]]):
             if len(str_list) != 2:
                 raise ValueError(f"Expected pair with 2 elements, got {len(str_list)}")
 
-            pair_parts = []
-            for s in str_list:
-                if isinstance(s, str) and s.startswith("\\x"):
-                    # Hex-encoded bytes
-                    hex_str = s[2:]  # Remove \x prefix
-                    pair_parts.append(bytes.fromhex(hex_str))
-                else:
-                    # UTF-8 string: encode back to bytes
-                    pair_parts.append(s.encode('utf-8'))
-
+            pair_parts = [decode_bytes_from_json(s) for s in str_list]
             pair_counts[(pair_parts[0], pair_parts[1])] = count
 
         return pair_counts

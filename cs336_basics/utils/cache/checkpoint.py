@@ -19,6 +19,16 @@ from .word_counts import WordCountsCache
 from .pair_counts import PairCountsCache
 
 
+def _build_vocab_from_merges(special_tokens: list[str], merges: list[tuple[bytes, bytes]]) -> dict[int, bytes]:
+    """Build vocabulary from special tokens and merges.
+
+    Helper function to avoid circular import with TokenizerDataManager.
+    """
+    from cs336_basics.assignment_1.tokenizer_data_manager import TokenizerDataManager
+    manager = TokenizerDataManager(verbose=False)
+    return manager.build_vocab(special_tokens, merges)
+
+
 class CheckpointManager:
     """Manages incremental BPE training checkpoints for resumable training."""
 
@@ -52,16 +62,6 @@ class CheckpointManager:
             return Path(input_path).stem
         return input_path.replace('.txt', '')
 
-    @staticmethod
-    def build_vocab(special_tokens: list[str], merges: list[tuple[bytes, bytes]]) -> dict[int, bytes]:
-        """Build vocabulary from special tokens and merges.
-
-        Note: Delegates to TokenizerDataManager to avoid duplication.
-        """
-        from cs336_basics.assignment_1.tokenizer_data_manager import TokenizerDataManager
-        manager = TokenizerDataManager(verbose=False)
-        return manager.build_vocab(special_tokens, merges)
-
     def load_or_initialize(self, num_merges_needed: int, special_tokens: list[str]) -> dict[str, Any]:
         """
         Load nearest checkpoint or return initial state.
@@ -89,7 +89,7 @@ class CheckpointManager:
                 }
 
         # No checkpoint found - return initial state
-        initial_vocab = self.build_vocab(special_tokens, [])
+        initial_vocab = _build_vocab_from_merges(special_tokens, [])
         return {
             'merges': [],
             'word_counts': None,
@@ -117,7 +117,7 @@ class CheckpointManager:
             special_tokens: List of special tokens
         """
         # Build vocab from current merges
-        current_vocab = self.build_vocab(special_tokens, merges)
+        current_vocab = _build_vocab_from_merges(special_tokens, merges)
 
         # Save checkpoint
         self.save_checkpoint(

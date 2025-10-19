@@ -13,7 +13,7 @@ from pathlib import Path
 from collections import Counter
 from typing import TYPE_CHECKING, Callable, Any
 
-from .base import JSONCache
+from .base import JSONCache, get_default_cache_dir, encode_bytes_for_json, decode_bytes_from_json
 
 if TYPE_CHECKING:
     pass
@@ -38,15 +38,10 @@ class WordCountsCache(JSONCache[Counter[tuple[bytes, ...]]]):
             logger: Optional logger with log_stats method (default: None)
         """
         if cache_dir is None:
-            cache_dir = self._get_default_cache_dir()
+            cache_dir = get_default_cache_dir()
 
         super().__init__(cache_dir=cache_dir, cache_prefix="word_counts", logger=logger)
         self._sort_by_frequency = True  # Default behavior for word counts
-
-    def _get_default_cache_dir(self) -> Path:
-        """Get the default cache directory (project_root/data/cache)."""
-        from cs336_basics.utils import get_project_root
-        return get_project_root() / "data" / "cache"
 
     def get_cache_path(self, key: str) -> Path:
         """
@@ -98,17 +93,7 @@ class WordCountsCache(JSONCache[Counter[tuple[bytes, ...]]]):
 
         # Convert each word tuple to string array (UTF-8 or hex)
         for word_tuple, count in items:
-            key_parts = []
-            for b in word_tuple:
-                try:
-                    # Try to decode as UTF-8
-                    decoded = b.decode('utf-8')
-                    # Use the string directly if it's printable and doesn't need escaping
-                    key_parts.append(decoded)
-                except UnicodeDecodeError:
-                    # Fall back to hex with \x prefix for non-UTF-8 bytes
-                    key_parts.append(f"\\x{b.hex()}")
-
+            key_parts = [encode_bytes_for_json(b) for b in word_tuple]
             key = json.dumps(key_parts)
             serializable_data[key] = count
 
@@ -134,17 +119,7 @@ class WordCountsCache(JSONCache[Counter[tuple[bytes, ...]]]):
         for key, count in json_data.items():
             # Parse the JSON array
             str_list = json.loads(key)
-            word_tuple_parts = []
-
-            for s in str_list:
-                if isinstance(s, str) and s.startswith("\\x"):
-                    # Hex-encoded bytes: "\x48656c6c6f" -> b'Hello'
-                    hex_str = s[2:]  # Remove \x prefix
-                    word_tuple_parts.append(bytes.fromhex(hex_str))
-                else:
-                    # UTF-8 string: encode back to bytes
-                    word_tuple_parts.append(s.encode('utf-8'))
-
+            word_tuple_parts = [decode_bytes_from_json(s) for s in str_list]
             word_counts[tuple(word_tuple_parts)] = count
 
         return word_counts

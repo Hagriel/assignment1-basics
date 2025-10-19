@@ -10,6 +10,7 @@ Features:
 - Flexible serialization/deserialization hooks
 - Error handling with fallback behavior
 - Optional logging integration
+- Shared utilities for encoding bytes in JSON format
 """
 
 from __future__ import annotations
@@ -23,6 +24,63 @@ if TYPE_CHECKING:
 
 
 T = TypeVar('T')
+
+
+def get_default_cache_dir() -> Path:
+    """Get the default cache directory (project_root/data/cache).
+
+    Returns:
+        Path to default cache directory
+    """
+    from cs336_basics.utils import get_project_root
+    return get_project_root() / "data" / "cache"
+
+
+def encode_bytes_for_json(byte_value: bytes) -> str:
+    """Encode bytes for JSON serialization using UTF-8 when possible, hex otherwise.
+
+    Args:
+        byte_value: Bytes to encode
+
+    Returns:
+        String representation (UTF-8 string or hex with \\x prefix)
+
+    Examples:
+        >>> encode_bytes_for_json(b'hello')
+        'hello'
+        >>> encode_bytes_for_json(b'\\xff\\xfe')
+        '\\\\xfffe'
+    """
+    try:
+        # Try to decode as UTF-8
+        return byte_value.decode('utf-8')
+    except UnicodeDecodeError:
+        # Fall back to hex with \x prefix for non-UTF-8 bytes
+        return f"\\x{byte_value.hex()}"
+
+
+def decode_bytes_from_json(json_value: str) -> bytes:
+    """Decode bytes from JSON string representation.
+
+    Args:
+        json_value: String from JSON (UTF-8 or hex with \\x prefix)
+
+    Returns:
+        Original bytes value
+
+    Examples:
+        >>> decode_bytes_from_json('hello')
+        b'hello'
+        >>> decode_bytes_from_json('\\\\xfffe')
+        b'\\xff\\xfe'
+    """
+    if isinstance(json_value, str) and json_value.startswith("\\x"):
+        # Hex-encoded bytes: "\x48656c6c6f" -> b'Hello'
+        hex_str = json_value[2:]  # Remove \x prefix
+        return bytes.fromhex(hex_str)
+    else:
+        # UTF-8 string: encode back to bytes
+        return json_value.encode('utf-8')
 
 
 class JSONCache(Generic[T]):

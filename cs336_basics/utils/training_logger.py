@@ -13,6 +13,8 @@ from cs336_basics.utils import format_time
 class TrainingLogger:
     """Logger for tracking and displaying training progress."""
 
+    __slots__ = ('verbose', 'timers', 'previous_progress_state', 'start_offsets', 'last_progress_log_time')
+
     def __init__(self, verbose: bool = False) -> None:
         """
         Initialize the training logger.
@@ -22,8 +24,8 @@ class TrainingLogger:
         """
         self.verbose = verbose
         self.timers: dict[str, float] = {}
-        # Track last progress state for calculating block speed
-        self.last_progress: dict[str, dict[str, float]] = {}  # {timer_name: {count: int, time: float}}
+        # Track previous progress state for calculating block speed
+        self.previous_progress_state: dict[str, dict[str, float]] = {}  # {timer_name: {count: int, time: float}}
         # Track starting offset for each timer (for resumable operations)
         self.start_offsets: dict[str, int] = {}  # {timer_name: starting_count}
         # Track last progress log time for adaptive intervals
@@ -72,10 +74,6 @@ class TrainingLogger:
             print(f"\n{step_name}")
         if timer_name is not None:
             self.start_timer(timer_name)
-        elif timer_name is None and self.verbose:
-            # Auto-derive timer name from step name if verbose
-            # e.g., "Step 1: Getting word counts" -> "word_counts"
-            pass  # Don't auto-start timer unless explicitly requested
 
     def log_complete(self, step_name: str, timer_name: str) -> None:
         """Log completion of a step with elapsed time."""
@@ -108,9 +106,9 @@ class TrainingLogger:
             avg_speed = incremental_progress / elapsed if elapsed > 0 else 0
 
             # Calculate current block speed (since last progress log)
-            if timer_name in self.last_progress:
-                last_count = self.last_progress[timer_name]['count']
-                last_time = self.last_progress[timer_name]['time']
+            if timer_name in self.previous_progress_state:
+                last_count = self.previous_progress_state[timer_name]['count']
+                last_time = self.previous_progress_state[timer_name]['time']
                 block_count = current - last_count
                 block_time = elapsed - last_time
                 current_speed = block_count / block_time if block_time > 0 else 0
@@ -119,7 +117,7 @@ class TrainingLogger:
                 current_speed = avg_speed
 
             # Update tracking for next progress log
-            self.last_progress[timer_name] = {'count': current, 'time': elapsed}
+            self.previous_progress_state[timer_name] = {'count': current, 'time': elapsed}
 
             # Calculate remaining time based on average speed
             remaining = (total - current) / avg_speed if avg_speed > 0 else 0
