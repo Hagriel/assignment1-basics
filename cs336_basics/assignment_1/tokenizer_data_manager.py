@@ -99,7 +99,7 @@ class TokenizerDataManager:
         Returns:
             Reverse mapping from bytes to token IDs
         """
-        return {token_bytes: token_id for token_id, token_bytes in vocab.items()}
+        return {byte_seq: tok_id for tok_id, byte_seq in vocab.items()}
 
     def create_vocab_state(
         self,
@@ -256,13 +256,6 @@ class TokenizerDataManager:
 
         Returns:
             VocabState with loaded vocabulary
-
-        Raises:
-            ValueError: If invalid argument combination or cache miss
-
-        Examples:
-            >>> manager.load_vocab(special_tokens, vocab=my_vocab, merges=my_merges)
-            >>> manager.load_vocab(special_tokens, dataset_name="TinyStories", vocab_size=8192)
         """
         direct_data = vocab is not None or merges is not None
         cache_data = dataset_name is not None or vocab_size is not None
@@ -307,9 +300,6 @@ class TokenizerDataManager:
 
         Returns:
             VocabState if successful, None if cache miss
-
-        Raises:
-            ValueError: If invalid argument combination
         """
         direct_data = vocab is not None or merges is not None
         cache_data = dataset_name is not None or vocab_size is not None

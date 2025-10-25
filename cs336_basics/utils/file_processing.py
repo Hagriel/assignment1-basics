@@ -44,25 +44,6 @@ def find_chunk_boundaries(
     Returns:
         List of byte positions marking chunk boundaries.
         May return fewer chunks if boundaries overlap.
-
-    Raises:
-        ValueError: If neither desired_num_chunks nor target_chunk_size is provided
-
-    Notes:
-        - The returned list will have N+1 elements (start/end positions)
-        - First element is always 0, last element is file size
-        - Chunks are defined as [boundaries[i], boundaries[i+1])
-        - Function may return fewer chunks than requested if file is small
-        - Actual chunk sizes will vary based on special token positions
-
-    Example:
-        >>> # Auto-calculate chunks for ~300MB each
-        >>> with open("data.txt", "rb") as f:
-        ...     boundaries = find_chunk_boundaries(f, target_chunk_size=300*1024*1024)
-        >>>
-        >>> # Or specify exact number of chunks
-        >>> with open("data.txt", "rb") as f:
-        ...     boundaries = find_chunk_boundaries(f, desired_num_chunks=4)
     """
     if not isinstance(split_special_token, bytes):
         msg = "Must represent special token as a bytestring"
@@ -169,18 +150,6 @@ def process_file_chunks_multiprocessing(
 
     Returns:
         List of results from processing each chunk
-
-    Performance Notes:
-        - Uses separate processes for true parallelism
-        - Better for CPU-bound tasks (like regex processing)
-        - Higher memory usage per process
-        - Process startup overhead
-        - Chunks are NOT split beyond the provided boundaries to maintain consistency
-
-    Example:
-        >>> results = process_file_chunks_multiprocessing(
-        ...     "large_file.txt", boundaries, process_chunk, num_workers=4
-        ... )
     """
     if len(boundaries) < 2:
         return []

@@ -36,19 +36,14 @@ class Tokenizer:
         self.merges: list[tuple[bytes, bytes]] = []
         self.special_tokens: list[str] = special_tokens
         self.verbose: bool = verbose
+        # Escape special tokens so | is treated as literal, not alternation operator
+        self.special_tokens_pattern = re.compile('|'.join(re.escape(token) for token in special_tokens))
 
         # Reverse vocab mapping for efficient encoding (cached)
         self._bytes_to_id: dict[bytes, int] = {}
 
         # Initialize data manager for vocab loading and caching
         self.data_manager = TokenizerDataManager(verbose=verbose)
-
-        # Build tokenization pattern: special tokens | regular pattern
-        if special_tokens:
-            special_pattern = '|'.join(re.escape(token) for token in special_tokens)
-            self.tokenization_pattern: Pattern = re.compile(f'({special_pattern})|{pattern}')
-        else:
-            self.tokenization_pattern = self.pretokenization_pattern
 
     def init_vocab(self, merges: list[tuple[bytes, bytes]] | None = None) -> None:
         """Initialize vocabulary: special tokens + base bytes + merge results.
@@ -88,18 +83,7 @@ class Tokenizer:
 
         Returns:
             True if vocab was loaded successfully, False otherwise
-
-        Raises:
-            ValueError: If invalid combination of arguments provided
-
-        Examples:
-            # Load from direct data
-            >>> tokenizer.load_vocab(vocab=my_vocab, merges=my_merges)
-
-            # Load from cache
-            >>> tokenizer.load_vocab(dataset_name="TinyStoriesV2-GPT4-train", vocab_size=8192)
         """
-        # Use data manager to load vocabulary
         vocab_state = self.data_manager.try_load_vocab(
             special_tokens=self.special_tokens,
             vocab=vocab,
@@ -111,7 +95,6 @@ class Tokenizer:
         if vocab_state is None:
             return False
 
-        # Apply loaded state to tokenizer
         self.vocab = vocab_state.vocab
         self.merges = vocab_state.merges
         self._bytes_to_id = vocab_state.bytes_to_id

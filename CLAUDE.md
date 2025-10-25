@@ -10,9 +10,10 @@ This is CS336 Assignment 1: Basics - a PyTorch-based machine learning assignment
 ## Development Commands
 
 ### Environment Management
-- Use `uv` for dependency management and virtual environment (currently using Python 3.13.7)
+- Use `uv` for dependency management and virtual environment (currently using Python 3.14.0)
 - Run any Python file: `uv run <python_file_path>`
 - The environment will be automatically activated when needed
+- **Considering**: Python 3.14t (free-threaded build with disabled GIL) for potential threading benefits
 
 ### Testing
 - Run all tests: `uv run pytest` (48 tests available)
