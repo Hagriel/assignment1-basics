@@ -37,7 +37,10 @@ class Tokenizer:
         self.special_tokens: list[str] = special_tokens
         self.verbose: bool = verbose
         # Escape special tokens so | is treated as literal, not alternation operator
-        self.special_tokens_pattern = re.compile('|'.join(re.escape(token) for token in special_tokens))
+        special_pattern = '|'.join(re.escape(token) for token in special_tokens)
+        self.special_tokens_pattern = re.compile(special_pattern)
+        # Capturing group so split() includes special tokens in result
+        self.tokenization_special_tokens_pattern = re.compile(f"({special_pattern})")
 
         # Reverse vocab mapping for efficient encoding (cached)
         self._bytes_to_id: dict[bytes, int] = {}
@@ -62,6 +65,19 @@ class Tokenizer:
     def _build_reverse_vocab(self) -> None:
         """Build reverse vocabulary mapping (bytes -> token_id) for efficient encoding."""
         self._bytes_to_id = {token_bytes: token_id for token_id, token_bytes in self.vocab.items()}
+
+    def _ensure_vocab_initialized(self) -> None:
+        """Validate that vocabulary has been initialized.
+
+        Raises:
+            ValueError: If vocabulary is not initialized
+        """
+        if not self.vocab:
+            raise ValueError("Vocabulary not initialized. Call init_vocab() or load_vocab() first.")
+
+        # Ensure reverse mapping is built for encoding
+        if not self._bytes_to_id:
+            self._build_reverse_vocab()
 
     def load_vocab(
         self,
@@ -148,40 +164,43 @@ class Tokenizer:
         Returns:
             List of token IDs from the vocabulary
         """
-        if not self.vocab:
-            raise ValueError("Vocabulary not initialized. Train the tokenizer first.")
-
-        # Use cached reverse vocab mapping
-        if not self._bytes_to_id:
-            # Build if not cached (shouldn't happen if vocab loaded properly)
-            self._build_reverse_vocab()
+        self._ensure_vocab_initialized()
 
         token_ids = []
 
-        # Step 1: Pre-tokenize text using the tokenization pattern
-        for match in self.tokenization_pattern.finditer(text):
-            matched_text = match.group()
+        # Step 1: Split text on special tokens to handle them separately
+        # This prevents the pretokenization pattern from splitting special tokens
+        text_chunks = self.tokenization_special_tokens_pattern.split(text)
 
-            # Check if this is a special token
-            if matched_text in self.special_tokens:
-                # Special tokens map directly to their token ID
-                special_token_bytes = matched_text.encode('utf-8')
-                if special_token_bytes in self._bytes_to_id:
-                    token_ids.append(self._bytes_to_id[special_token_bytes])
+        for chunk in text_chunks:
+            if not chunk:
                 continue
 
-            # Step 2: Convert matched text to individual bytes
-            word = [bytes([b]) for b in matched_text.encode('utf-8')]
+            # Check if this chunk is a special token
+            if chunk in self.special_tokens:
+                # Special tokens map directly to their token ID
+                special_token_bytes = chunk.encode('utf-8')
+                if special_token_bytes not in self._bytes_to_id:
+                    raise ValueError(f"Special token {chunk!r} not found in vocabulary.")
+                token_ids.append(self._bytes_to_id[special_token_bytes])
+                continue
 
-            # Step 3: Apply BPE merges
-            word = self._apply_bpe_merges(word)
+            # Step 2: Apply pretokenization pattern to regular text
+            for match in self.pretokenization_pattern.finditer(chunk):
+                matched_text = match.group()
 
-            # Step 4: Map final tokens to their IDs
-            for token_bytes in word:
-                if token_bytes in self._bytes_to_id:
-                    token_ids.append(self._bytes_to_id[token_bytes])
-                else:
-                    raise ValueError(f"Token {token_bytes} not found in vocabulary")
+                # Step 3: Convert matched text to individual bytes
+                word = [bytes([b]) for b in matched_text.encode('utf-8')]
+
+                # Step 4: Apply BPE merges
+                word = self._apply_bpe_merges(word)
+
+                # Step 5: Map final tokens to their IDs
+                for token_bytes in word:
+                    if token_bytes in self._bytes_to_id:
+                        token_ids.append(self._bytes_to_id[token_bytes])
+                    else:
+                        raise ValueError(f"Token {token_bytes} not found in vocabulary")
 
         return token_ids
 
@@ -194,8 +213,7 @@ class Tokenizer:
         Returns:
             Decoded text string
         """
-        if not self.vocab:
-            raise ValueError("Vocabulary not initialized. Train the tokenizer first.")
+        self._ensure_vocab_initialized()
 
         # Step 1: Map each token ID to bytes
         byte_sequence = []

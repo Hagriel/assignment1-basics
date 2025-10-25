@@ -1,26 +1,10 @@
-"""Quick test script for BPE tokenizer training.
-
-This script tests basic BPE tokenizer functionality by training on TinyStories validation data.
-"""
-
-from cs336_basics.assignment_1.bpe_tokenizer import BPETokenizer
+from cs336_basics.assignment_1.tokenizer import Tokenizer
 from cs336_basics.constants import GPT2_PAT_STR, MODEL_DEFAULTS, TINYSTORIES_VALID, OWT_TRAIN
 
-from cs336_basics.assignment_1.tokenizer import Tokenizer
-from cs336_basics.constants import GPT2_PAT_STR, MODEL_DEFAULTS, TINYSTORIES_VALID
 
 
-def test_train_bpe():
-    bpe = BPETokenizer(GPT2_PAT_STR, MODEL_DEFAULTS.DEFAULT_SPECIAL_TOKENS, verbose=True)
-    train_result = bpe.train(OWT_TRAIN, 32_000)
-    print('vocab size = ', len(train_result.vocab))
-    print('merges count = ', len(train_result.merges))
-    print('First 30 longest merges:', sorted(train_result.merges, key=lambda x: len(x[0] + x[1]), reverse=True)[:30])
 
-
-def test_bpe():
-    """Test encode/decode functionality with BPE tokenizer."""
-
+if __name__ == "__main__":
     print("=" * 80)
     print("BPE Tokenizer Encode/Decode Test")
     print("=" * 80)
@@ -34,17 +18,9 @@ def test_bpe():
 
     # Test cases
     test_texts = [
-        "Hello, world!",
-        "I have a pussy you have a dick",
-        "The quick brown fox jumps over the lazy dog.",
-        "BPE tokenization is fun! 🎉",
-        "Special token: <|endoftext|> should work.",
-        "",  # Empty string
-        "a",  # Single character
-        "   ",  # Whitespace
-        "Hello\nWorld\tTest",  # Newlines and tabs
-        "Numbers: 123456789",
-        "Unicode: 你好世界 🌍",
+
+        "Special token: <|endoftext|><|endoftext|> should work.",
+
     ]
 
     print("\n2. Testing encode/decode round-trip:")

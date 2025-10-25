@@ -420,7 +420,7 @@ class BPETokenizer(Tokenizer):
         # Initialize training state
         state = self._initialize_training_state(input_path, vocab_size)
 
-        merges = self._run_merge_loop(state, checkpoint_interval=300)
+        merges = self._run_merge_loop(state, checkpoint_interval=1000)
 
         # Build vocabulary
         self.logger.log_step("Step 3: Building vocabulary...", "vocab")
