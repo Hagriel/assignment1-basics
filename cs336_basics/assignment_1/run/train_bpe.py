@@ -8,4 +8,4 @@ if __name__ == "__main__":
     train_result = bpe.train(OWT_TRAIN, 32_000)
     print('vocab size = ', len(train_result.vocab))
     print('merges count = ', len(train_result.merges))
-    print('First 30 longest merges:', sorted(train_result.merges, key=lambda x: len(x[0] + x[1]), reverse=True)[:30])
+    print('First 30 longest merges:', sorted(train_result.merges, key=lambda merge: len(merge[0] + merge[1]), reverse=True)[:30])

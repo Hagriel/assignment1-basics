@@ -309,8 +309,8 @@ class BPETokenizer(Tokenizer):
             if not pair_counts:
                 break
 
-            # Find most frequent pair
-            most_frequent_pair = max(pair_counts.items(), key=lambda x: (x[1], x[0]))
+            # Find most frequent pair (sort by count desc, then by pair lexicographically for deterministic tie-breaking)
+            most_frequent_pair = max(pair_counts.items(), key=lambda item: (item[1], item[0]))
             pair_to_merge = most_frequent_pair[0]
 
             # Get only words containing this specific pair (KEY OPTIMIZATION!)

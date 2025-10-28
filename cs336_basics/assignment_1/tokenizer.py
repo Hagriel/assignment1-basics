@@ -37,22 +37,37 @@ class Tokenizer:
         self.special_tokens: list[str] = special_tokens
         self.verbose: bool = verbose
 
-        escaped_special_pattern = '|'.join(re.escape(token) for token in special_tokens)
-        self.special_tokens_pattern = re.compile(escaped_special_pattern)
-        self.special_tokens_split_pattern = re.compile(f"({escaped_special_pattern})")
+        # Sort special tokens by length (longest first) to handle overlapping tokens correctly
+        # e.g., ['<|endoftext|>', '<|endoftext|><|endoftext|>'] -> match longer token first
+        if special_tokens:
+            sorted_special_tokens = sorted(special_tokens, key=len, reverse=True)
+            escaped_special_pattern = '|'.join(re.escape(token) for token in sorted_special_tokens)
+            self.special_tokens_pattern = re.compile(escaped_special_pattern)
+            self.special_tokens_split_pattern = re.compile(f"({escaped_special_pattern})")
+        else:
+            # Empty special tokens - create patterns that won't match anything
+            self.special_tokens_pattern = None
+            self.special_tokens_split_pattern = None
 
         self._bytes_to_id: dict[bytes, int] = {}
         self.data_manager = TokenizerDataManager(verbose=verbose)
 
-    def init_vocab(self, merges: list[tuple[bytes, bytes]] | None = None) -> None:
+    def init_vocab(self, vocab: dict[int, bytes] | None = None, merges: list[tuple[bytes, bytes]] | None = None) -> None:
         """Initialize vocabulary: special tokens + base bytes + merge results.
 
         Vocab IDs: [0..n-1]: special tokens, [n..n+255]: bytes, [n+256..]: merges
 
         Args:
+            vocab: Optional pre-built vocabulary to use directly
             merges: Optional list of merge operations to build vocab
         """
-        self.vocab = self.data_manager.build_vocab(self.special_tokens, merges)
+        if vocab is not None:
+            self.vocab = vocab
+        else:
+            self.vocab = self.data_manager.build_vocab(self.special_tokens, merges)
+
+        if merges is not None:
+            self.merges = merges
         self._build_reverse_vocab()
 
     def _build_reverse_vocab(self) -> None:
@@ -153,7 +168,13 @@ class Tokenizer:
         self._ensure_vocab_initialized()
 
         token_ids = []
-        text_segments = self.special_tokens_split_pattern.split(text)
+
+        # Handle special tokens splitting (if any special tokens exist)
+        if self.special_tokens_split_pattern is not None:
+            text_segments = self.special_tokens_split_pattern.split(text)
+        else:
+            # No special tokens - treat entire text as one segment
+            text_segments = [text]
 
         for text_segment in text_segments:
             if not text_segment:
@@ -178,11 +199,39 @@ class Tokenizer:
 
         return token_ids
 
-    def decode(self, token_ids: list[int]) -> str:
+    def encode_iterable(self, iterable):
+        """Encode text from an iterable (e.g., file object) as a generator.
+
+        Memory-efficient encoding that yields token IDs one at a time without
+        loading the entire input into memory. Useful for processing large files.
+
+        Args:
+            iterable: An iterable that yields text strings (e.g., open file object)
+
+        Yields:
+            int: Token IDs one at a time
+
+        Example:
+            with open('large_file.txt') as f:
+                for token_id in tokenizer.encode_iterable(f):
+                    process(token_id)
+        """
+        self._ensure_vocab_initialized()
+
+        # Process the iterable line by line or chunk by chunk
+        for text_chunk in iterable:
+            # Encode the chunk and yield each token ID
+            token_ids = self.encode(text_chunk)
+            for token_id in token_ids:
+                yield token_id
+
+    def decode(self, token_ids: list[int], errors: str = 'replace') -> str:
         """Decode list of token IDs back to text.
 
         Args:
             token_ids: List of token IDs to decode
+            errors: How to handle decoding errors ('strict', 'replace', 'ignore')
+                    Default is 'replace' to handle partial UTF-8 sequences in individual tokens
 
         Returns:
             Decoded text string
@@ -196,8 +245,4 @@ class Tokenizer:
             token_bytes_sequence.append(self.vocab[token_id])
 
         concatenated_bytes = b''.join(token_bytes_sequence)
-
-        try:
-            return concatenated_bytes.decode('utf-8')
-        except UnicodeDecodeError as e:
-            raise ValueError(f"Failed to decode bytes to UTF-8: {e}") from e
+        return concatenated_bytes.decode('utf-8', errors=errors)

@@ -87,7 +87,7 @@ class PairCountsCache(JSONCache[Counter[tuple[bytes, bytes]]]):
         # Determine iteration order (sorted by frequency or natural order)
         if self._sort_by_frequency:
             # Sort by frequency (descending), then lexicographically (ascending)
-            items = sorted(data.items(), key=lambda x: (-x[1], x[0]))
+            items = sorted(data.items(), key=lambda item: (-item[1], item[0]))
         else:
             items = data.items()
 

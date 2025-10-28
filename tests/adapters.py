@@ -9,6 +9,7 @@ import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
+from cs336_basics.assignment_1 import Tokenizer
 from cs336_basics.assignment_1.bpe_tokenizer import BPETokenizer
 from cs336_basics.constants import GPT2_PAT_STR
 
@@ -563,15 +564,14 @@ def get_tokenizer(
         A BPE tokenizer that uses the provided vocab, merges, and special tokens.
     """
     # Create BPETokenizer instance with special tokens
-    bpe = BPETokenizer(GPT2_PAT_STR, special_tokens or [], verbose=False)
+    tokenizer = Tokenizer(GPT2_PAT_STR, special_tokens or [], verbose=False)
 
     # Use the provided vocab directly (don't reconstruct)
-    bpe.vocab = vocab
+    tokenizer.init_vocab(vocab, merges)
 
     # Store merges for encoding (needed to apply merges in order)
-    bpe.merges = merges
 
-    return bpe
+    return tokenizer
 
 
 def run_train_bpe(

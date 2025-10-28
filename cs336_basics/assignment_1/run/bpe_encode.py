@@ -18,9 +18,17 @@ if __name__ == "__main__":
 
     # Test cases
     test_texts = [
-
-        "Special token: <|endoftext|><|endoftext|> should work.",
-
+        "Hello, world!",
+        "I have a pussy you have a dick",
+        "The quick brown fox jumps over the lazy dog.",
+        "BPE tokenization is fun! 🎉",
+        "Special token: <|endoftext|> should work.",
+        "",  # Empty string
+        "a",  # Single character
+        "   ",  # Whitespace
+        "Hello\nWorld\tTest",  # Newlines and tabs
+        "Numbers: 123456789",
+        "Unicode: 你好世界 🌍",
     ]
 
     print("\n2. Testing encode/decode round-trip:")
