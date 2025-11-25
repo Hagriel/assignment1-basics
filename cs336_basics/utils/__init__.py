@@ -10,6 +10,7 @@ assignments and components, organized by functionality:
 - file_processing: File chunking and multiprocessing for file operations
 - cache: JSON-based caching system (base + domain-specific implementations)
 - training_logger: Progress logging for training workflows
+- wandb_logger: Weights & Biases integration for experiment tracking
 - import_utils: Import setup utilities for scripts
 
 """
@@ -43,6 +44,15 @@ from .cache import JSONCache, WordCountsCache, PairCountsCache, MergesCache, Voc
 # Training utilities
 from .training_logger import TrainingLogger
 
+# Wandb integration (optional - imports gracefully handled)
+try:
+    from .wandb_logger import WandbLogger, is_wandb_available
+    _wandb_available = True
+except ImportError:
+    WandbLogger = None
+    is_wandb_available = lambda: False
+    _wandb_available = False
+
 # Import utilities
 from .import_utils import setup_imports_from_file
 
@@ -72,6 +82,9 @@ __all__ = [
     'CheckpointManager',
     # Training
     'TrainingLogger',
+    # Wandb (optional)
+    'WandbLogger',
+    'is_wandb_available',
     # Import
     'setup_imports_from_file',
 ]

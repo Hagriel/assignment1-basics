@@ -168,4 +168,4 @@ cython_debug/
 .vscode/
 
 # Training data
-data/
+data/wandb/

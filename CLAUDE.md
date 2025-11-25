@@ -1,37 +1,26 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Project Overview
-This is CS336 Assignment 1: Basics - a PyTorch-based machine learning assignment focused on implementing fundamental neural network components including tokenizers, attention mechanisms, transformers, and optimizers.
+CS336 Assignment 1: Basics - PyTorch-based ML assignment implementing tokenizers, attention, transformers, and optimizers.
 
-**Project Status**: BPE tokenizer training is complete (`cs336_basics/assignment_1/bpe_tokenizer.py`) with 1/3 training tests passing. Encoding/decoding methods still need implementation for the 22 tokenizer tests. All other neural network components need to be implemented through the adapter pattern in `tests/adapters.py`.
+**Status**: BPE tokenizer training complete (2/3 tests passing). Need: encode/decode methods (22 tokenizer tests) + all neural network components via adapter pattern in `tests/adapters.py`.
 
-## Development Commands
+## Commands
+- Run tests: `uv run pytest` (48 total) | Specific: `uv run pytest tests/test_<component>.py`
+- Run Python: `uv run <file_path>` | Python 3.13.9
+- Submit: `./make_submission.sh`
+- Linting: Ruff (120 char lines)
 
-### Environment Management
-- Use `uv` for dependency management and virtual environment (currently using Python 3.14.0)
-- Run any Python file: `uv run <python_file_path>`
-- The environment will be automatically activated when needed
-- **Considering**: Python 3.14t (free-threaded build with disabled GIL) for potential threading benefits
+## Architecture
+**Test Pattern**: `tests/adapters.py` (593 lines, all `NotImplementedError`) - adapter functions (`run_linear`, `run_embedding`, etc.) must import and call your implementations in `cs336_basics/`
 
-### Testing
-- Run all tests: `uv run pytest` (48 tests available)
-- Run specific test file: `uv run pytest tests/test_<component>.py`
-- Run with verbose output: `uv run pytest -v`
-- Tests use snapshot testing and fixtures located in `tests/fixtures/`
-- Test collection: `uv run pytest --collect-only` to see all available tests
+**Tests** (48 total): data (1), model (13), nn_utils (3), optimizer (2), serialization (1), tokenizer (22), train_bpe (3)
+- BPE training: 2/3 passing (test_train_bpe ✅, test_train_bpe_speed ✅)
 
-### Linting and Code Quality
-- Configured with Ruff (line length: 120)
-- Line number display enabled in pytest with `-s` flag
-- Special lint ignores for `__init__.py` files
+**Data**: TinyStories (2.2GB train, 22MB valid), OWT (11.9GB train, 290MB valid) - already downloaded
 
-### Submission
-- Create submission package: `./make_submission.sh`
-- Runs tests and creates `cs336-spring2025-assignment-1-submission.zip`
-
-## Code Architecture
+## Implementation Status
+✅ **Completed**: BPE tokenizer training (`cs336_basics/assignment_1/bpe_tokenizer.py`) with checkpoints (every 300 merges), caching (word/pair counts, merges, vocab), multiprocessing, progress logging
 
 ### Core Structure
 - `cs336_basics/`: Main implementation package

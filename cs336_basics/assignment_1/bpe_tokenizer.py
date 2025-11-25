@@ -424,7 +424,7 @@ class BPETokenizer(Tokenizer):
 
         # Build vocabulary
         self.logger.log_step("Step 3: Building vocabulary...", "vocab")
-        self.init_vocab(merges)
+        self.init_vocab(merges=merges)
         self.merges = merges
         self.logger.log_complete("Vocabulary built", "vocab")
 

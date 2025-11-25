@@ -2,7 +2,8 @@
 Training logger for tracking progress during BPE training and other operations.
 
 This module provides a clean interface for logging training progress without
-cluttering the main training logic with print statements.
+cluttering the main training logic with print statements. Supports optional
+Weights & Biases (wandb) integration for experiment tracking.
 """
 
 import time
@@ -11,18 +12,33 @@ from cs336_basics.utils import format_time
 
 
 class TrainingLogger:
-    """Logger for tracking and displaying training progress."""
+    """Logger for tracking and displaying training progress with optional wandb support."""
 
-    __slots__ = ('verbose', 'timers', 'previous_progress_state', 'start_offsets', 'last_progress_log_time')
+    __slots__ = (
+        'verbose', 'timers', 'previous_progress_state', 'start_offsets',
+        'last_progress_log_time', 'wandb_logger', 'run_name'
+    )
 
-    def __init__(self, verbose: bool = False) -> None:
+    def __init__(
+        self,
+        verbose: bool = False,
+        use_wandb: bool = False,
+        wandb_project: str | None = None,
+        wandb_config: dict[str, Any] | None = None,
+        run_name: str | None = None
+    ) -> None:
         """
         Initialize the training logger.
 
         Args:
-            verbose: Whether to print progress information
+            verbose: Whether to print progress information to console
+            use_wandb: Whether to enable wandb logging (default: False)
+            wandb_project: wandb project name (default: None, uses env or "cs336-assignment1")
+            wandb_config: Dictionary of hyperparameters for wandb (default: None)
+            run_name: Name for the wandb run (default: None, auto-generated)
         """
         self.verbose = verbose
+        self.run_name = run_name
         self.timers: dict[str, float] = {}
         # Track previous progress state for calculating block speed
         self.previous_progress_state: dict[str, dict[str, float]] = {}  # {timer_name: {count: int, time: float}}
@@ -30,6 +46,22 @@ class TrainingLogger:
         self.start_offsets: dict[str, int] = {}  # {timer_name: starting_count}
         # Track last progress log time for adaptive intervals
         self.last_progress_log_time: dict[str, float] = {}  # {timer_name: last_log_time}
+
+        # Initialize wandb logger if requested
+        self.wandb_logger = None
+        if use_wandb:
+            try:
+                from cs336_basics.utils.wandb_logger import WandbLogger
+                self.wandb_logger = WandbLogger(
+                    project=wandb_project,
+                    name=run_name,
+                    config=wandb_config,
+                    enabled=True
+                )
+            except Exception as e:
+                if verbose:
+                    print(f"⚠️  Failed to initialize wandb: {e}")
+                    print("   Continuing with console logging only...")
 
     def start_timer(self, name: str, start_count: int = 0) -> None:
         """
@@ -221,3 +253,37 @@ class TrainingLogger:
                 print(f"{key}: {value:,}")
             else:
                 print(f"{key}: {value}")
+
+    def log_metrics(self, metrics: dict[str, Any], step: int | None = None) -> None:
+        """
+        Log metrics to wandb (if enabled).
+
+        Args:
+            metrics: Dictionary of metric names and values
+            step: Optional step number for x-axis
+        """
+        if self.wandb_logger is not None:
+            self.wandb_logger.log(metrics, step=step)
+
+    def log_hyperparameters(self, config: dict[str, Any]) -> None:
+        """
+        Log hyperparameters to wandb (if enabled).
+
+        Args:
+            config: Dictionary of hyperparameter names and values
+        """
+        if self.wandb_logger is not None:
+            self.wandb_logger.log_hyperparameters(config)
+
+    def finish(self) -> None:
+        """Finish logging and upload final data to wandb (if enabled)."""
+        if self.wandb_logger is not None:
+            self.wandb_logger.finish()
+
+    def __enter__(self) -> 'TrainingLogger':
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Context manager exit - automatically finish wandb."""
+        self.finish()
